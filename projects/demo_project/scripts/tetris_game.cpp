@@ -269,24 +269,41 @@ void TetrisGame::on_update(float delta_time) {
     }
     if (paused) return;
 
-    if (input().is_pressed(Button::A)) rotate(1);
-    if (input().is_pressed(Button::B)) rotate(-1);
-    if (input().is_pressed(Button::Up)) {
+    if (input().is_pressed(Button::A) || input().is_pressed(Button::X)) rotate(1);
+    if (input().is_pressed(Button::B) || input().is_pressed(Button::Y)) rotate(-1);
+
+    const InputState& state = input();
+    const bool pad_left = state.circle_pad.x < -0.4f;
+    const bool pad_right = state.circle_pad.x > 0.4f;
+    const bool pad_down = state.circle_pad.y > 0.4f;
+    const bool pad_up = state.circle_pad.y < -0.6f;
+
+    const bool left_pressed = state.is_pressed(Button::Left) || (pad_left && !pad_left_prev_);
+    const bool right_pressed = state.is_pressed(Button::Right) || (pad_right && !pad_right_prev_);
+    const bool left_held = state.is_held(Button::Left) || pad_left;
+    const bool right_held = state.is_held(Button::Right) || pad_right;
+
+    pad_left_prev_ = pad_left;
+    pad_right_prev_ = pad_right;
+
+    if ((state.is_pressed(Button::Up) || (pad_up && !pad_up_prev_))) {
+        pad_up_prev_ = pad_up;
         hard_drop();
         return;
     }
+    pad_up_prev_ = pad_up;
 
     int direction = 0;
-    if (input().is_pressed(Button::Left)) direction = -1;
-    else if (input().is_pressed(Button::Right)) direction = 1;
+    if (left_pressed) direction = -1;
+    else if (right_pressed) direction = 1;
 
     if (direction != 0) {
         repeat_dir_ = direction;
         repeat_timer_ = 0.16f;
         try_move(direction, 0);
     } else if (repeat_dir_ != 0) {
-        const Button held = repeat_dir_ < 0 ? Button::Left : Button::Right;
-        if (!input().is_held(held)) {
+        const bool still_held = repeat_dir_ < 0 ? left_held : right_held;
+        if (!still_held) {
             repeat_dir_ = 0;
         } else {
             repeat_timer_ -= delta_time;
@@ -297,7 +314,7 @@ void TetrisGame::on_update(float delta_time) {
         }
     }
 
-    const bool soft_drop = input().is_held(Button::Down);
+    const bool soft_drop = state.is_held(Button::Down) || pad_down;
     gravity_timer_ += delta_time * (soft_drop ? 10.0f : 1.0f);
 
     if (gravity_timer_ >= gravity_interval()) {

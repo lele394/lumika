@@ -157,7 +157,7 @@ int main() {
     u64 last_ms = osGetTime();
     const u64 start_ms = last_ms;
 
-    while (aptMainLoop() && frames < 3600) {
+    while (aptMainLoop()) {
         hidScanInput();
         poll_input_3ds(input);
 
@@ -225,6 +225,15 @@ int main() {
                 next_renderer = world.find_component<MeshRenderer>(next);
             }
 
+            const int board_layer = board_renderer != nullptr ? board_renderer->layer : -1;
+            const int next_layer = next_renderer != nullptr ? next_renderer->layer : -1;
+            u32 top_mask = 0;
+            u32 bottom_mask = 0;
+            for (const CameraDesc& camera : list.cameras()) {
+                if (camera.screen == Screen::Top) top_mask = camera.cull_mask;
+                else bottom_mask = camera.cull_mask;
+            }
+
             char report[1200];
             std::snprintf(report, sizeof(report),
                           "scene=%s\n"
@@ -254,6 +263,10 @@ int main() {
                           "board_update_ok=%d\n"
                           "board_cam=%d\n"
                           "board_cam_screen=%d\n"
+                          "board_layer=%d\n"
+                          "next_layer=%d\n"
+                          "top_mask=%u\n"
+                          "bottom_mask=%u\n"
                           "audio_device=%d\n"
                           "audio_clip=%d\n"
                           "audio_result=0x%08lx\n",
@@ -274,7 +287,7 @@ int main() {
                           camera_draws[1], cam_top, cam_bottom,
                           board_view != nullptr ? board_view->mesh_vertices : -1,
                           board_view != nullptr && board_view->update_ok ? 1 : 0, board_cam,
-                          board_cam_screen,
+                          board_cam_screen, board_layer, next_layer, top_mask, bottom_mask,
                           audio_ready ? 1 : 0, beep_clip.valid() ? 1 : 0,
                           static_cast<unsigned long>(audio_device_3ds_last_result()));
             write_report(report);

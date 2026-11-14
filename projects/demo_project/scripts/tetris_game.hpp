@@ -50,6 +50,9 @@ private:
     float lock_timer_ = 0.0f;
     float repeat_timer_ = 0.0f;
     int repeat_dir_ = 0;
+    bool pad_left_prev_ = false;
+    bool pad_right_prev_ = false;
+    bool pad_up_prev_ = false;
     int bag_[7] = {};
     int bag_index_ = 7;
     e3d::u32 random_state_ = 0x12345u;
