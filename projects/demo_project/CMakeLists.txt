@@ -10,6 +10,11 @@ if(NINTENDO_3DS)
   add_executable(scene_check src/scene_check_3ds.cpp)
   target_link_libraries(scene_check PRIVATE e3d_core)
   ctr_create_3dsx(scene_check)
+
+  # M2/M4 renderer check: two cameras, two spinning triangles.
+  add_executable(triangle3d src/triangle_3ds.cpp)
+  target_link_libraries(triangle3d PRIVATE e3d_core e3d_render_3ds)
+  ctr_create_3dsx(triangle3d)
 else()
   find_package(glfw3 CONFIG REQUIRED)
 

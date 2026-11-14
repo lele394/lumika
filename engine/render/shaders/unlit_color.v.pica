@@ -1,0 +1,32 @@
+; e3d unlit colour vertex shader
+; Inputs: v0 = position, v1 = colour (float4)
+; Uniforms: mvp (4 rows), tint (float4)
+
+.fvec mvp[4]
+.fvec tint[1]
+
+.out outpos position
+.out outclr color
+
+.alias inpos v0
+.alias inclr v1
+
+.constf one(1.0, 1.0, 1.0, 1.0)
+
+.proc main
+	; homogenous position
+	mov r0.xyz, inpos
+	mov r0.w, one.x
+
+	; clip = mvp * position
+	dp4 outpos.x, mvp[0], r0
+	dp4 outpos.y, mvp[1], r0
+	dp4 outpos.z, mvp[2], r0
+	dp4 outpos.w, mvp[3], r0
+
+	; colour = vertex colour * material tint
+	mov r1, tint[0]
+	mul outclr, inclr, r1
+
+	end
+.end

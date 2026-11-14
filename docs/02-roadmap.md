@@ -13,9 +13,10 @@ Each milestone ends in something demonstrable — no milestone is "infrastructur
 | M1 | Core data model | Scene JSON round-trips, hierarchy works, tests green | 1 wk |
 | M2 | Renderer + assets | Lit, textured meshes on both screens | 1.5-2 wk |
 | M3 | Scripts, input, time, audio | Script-driven behaviour + sound on both backends | 1 wk |
-| M4 | Tetris demo | Playable game, packaged, 60 fps | 1-1.5 wk |
-| M5 | Editor MVP | Author the demo scene without hand-editing JSON | 2 wk |
-| M6 | Later | Prefabs, packing, streaming, physics primitives, overlays | — |
+| M4 | Dual-screen 3D smoke demo | Two cameras, two spinning triangles, independent speeds | 2-3 d |
+| M5 | Tetris demo | Playable game, packaged, 60 fps | 1-1.5 wk |
+| M6 | Editor MVP | Author the demo scene without hand-editing JSON | 2 wk |
+| M7 | Later | Prefabs, packing, streaming, physics primitives, overlays | — |
 
 ## M0 — Toolchain and skeleton
 
@@ -82,24 +83,35 @@ done), dirty-subtree transform caching, and a non-linear GUID index. None are ne
 
 ## M2 — Renderer and asset pipeline
 
+**Status: in progress.** Renderer core and dual-screen verification are done; textures, lighting and
+the asset tools remain.
+
 **Goal:** a scene file with meshes, materials and cameras renders correctly on the device.
 
 Tasks:
 
-- [ ] Citro3D device: init/shutdown, command buffer, both render targets, viewport, clear, depth.
-- [ ] Shader library via `picasso`: `unlit_color`, `unlit_textured`, `lit_diffuse`, `lit_textured`,
-      plus `sprite` and `text`. Fixed attribute/uniform layout shared by all programs.
-- [ ] Mesh upload (`linearAlloc`, cache flush), textures from `.t3x`, material JSON.
-- [ ] Render list, camera component, `MeshRenderer`, sorting, dynamic VBO triple buffering.
+- [x] Citro3D device: init/shutdown, both render targets, clear, depth, per-camera projection.
+- [x] Shader pipeline: `picasso` → DVLB → build-time embedded blob; `unlit_color` (`mvp` + `tint`).
+- [x] Mesh upload (`linearAlloc`, `GSPGPU_FlushDataCache`), generation-checked handle pools, fixed
+      48-byte vertex format.
+- [x] Render list, `CameraDesc`, `MeshRenderer`, layer/cull-mask filtering, transform propagation.
+- [x] Dual-screen check: two cameras, two spinning triangles, 2 draws per frame.
+- [ ] Remaining shaders: `unlit_textured`, `lit_diffuse`, `lit_textured`, `sprite`, `text`.
+- [ ] Textures from `.t3x`; material JSON with texture slots.
 - [ ] `tools/meshc`: OBJ first, glTF via `cgltf`; AABB; u16 indices; validation.
 - [ ] `tools/fontc`: TTF → atlas + metrics; 2D sprite/text batcher.
+- [ ] Draw sorting/batching; dynamic VBO triple buffering for the board.
 - [ ] Debug overlay: frame time, draw calls, triangles, heap high-water.
+- [ ] Zero-allocation measurement across a 600-frame run.
 - [ ] Optional: stereo camera path behind a flag.
 
-**Acceptance:** a scene with a textured, lit cube on the top screen and a second camera on the bottom
-runs at 60 fps in Azahar; changing the clear colour in JSON changes the frame; the debug overlay can
-be toggled; the update/render loop performs **zero heap allocations** (counter measured across 600
-frames).
+**Incremental acceptance (met):** `triangle3d.3dsx` renders two independent cameras and triangles,
+120 frames in 2006 ms (16.7 ms/frame), 2 draw calls, both screens confirmed.
+
+**Final acceptance:** a scene with a textured, lit cube on the top screen and a second camera on the
+bottom runs at 60 fps in Azahar; changing the clear colour in JSON changes the frame; the debug
+overlay can be toggled; the update/render loop performs **zero heap allocations** (counter measured
+across 600 frames).
 
 **Risk checkpoint:** if shader work overruns, cut to `unlit_textured` + `sprite` and defer lighting to
 M3. Do not cut the asset pipeline — it is on the critical path for the demo.
@@ -123,7 +135,20 @@ Tasks:
 triangle draws; the same WAV plays, loops and stops on both backends; pausing stops simulation but not
 audio; no allocation in `on_update` for the demo scripts.
 
-## M4 — Tetris demo
+## M4 — Dual-screen 3D smoke demo
+
+**Goal:** the smallest thing that proves the renderer and script layer together, before any game rules.
+
+- Two cameras, one per screen, independently configured (FOV, position, clear colour).
+- Two triangle meshes (or one mesh, two instances) spinning at different speeds and opposite directions.
+- Rotation driven by scripts, not by hard-coded C++ in `main`, so the lifecycle path is exercised.
+- Input: pause/resume and axis flips, to prove input reaches scripts.
+- Debug overlay: frame time, draw calls, triangles.
+
+**Acceptance:** both screens show independent 3D motion at 60 fps; pausing freezes both; no per-frame
+heap allocations; runs from the packaged project scene, not from a special-case binary.
+
+## M5 — Tetris demo
 
 **Goal:** the game that defines the engine. If a feature is not needed here, it does not belong in the
 MVP.
@@ -160,9 +185,9 @@ MVP.
 - [ ] Audio triggers correctly and survives scene restart.
 - [ ] Builds from a clean checkout and packages with assets into RomFS.
 
-**Gate:** the editor does not start until M4 is playable.
+**Gate:** the editor does not start until M5 is playable.
 
-## M5 — Editor MVP
+## M6 — Editor MVP
 
 **Goal:** author and run the demo without touching JSON by hand.
 
@@ -173,13 +198,13 @@ MVP.
 - [ ] Assets: browse, create material, import mesh (runs `meshc`), reveal GUID.
 - [ ] Save with unknown-key preservation; undo/redo command stack.
 - [ ] Build & Run: Ninja target + Azahar; Play in editor (desktop backend).
-- [ ] **M5b (optional):** scene viewport, orbit camera, translate/rotate gizmos, picking.
+- [ ] **M6b (optional):** scene viewport, orbit camera, translate/rotate gizmos, picking.
 
 **Acceptance:** the demo scene can be recreated from an empty project in the editor; a script property
 edited in the inspector changes gameplay; save/load is lossless; Build & Run reaches the emulator in
 one click; the editor and the runtime agree on every property (same descriptor code).
 
-## M6 — Later, in likely order
+## M7 — Later, in likely order
 
 1. Prefabs (runtime instantiation first, editor UI later).
 2. Cooked asset pack (single file, alignment, optional LZ4) + async load.

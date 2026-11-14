@@ -125,4 +125,18 @@ inline Vec3 transform_direction(const Mat4& mat, Vec3 d) noexcept {
     };
 }
 
+inline constexpr f32 dot(Vec3 a, Vec3 b) noexcept { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+inline constexpr Vec3 cross(Vec3 a, Vec3 b) noexcept {
+    return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
+inline f32 length(Vec3 v) noexcept { return std::sqrt(dot(v, v)); }
+
+inline Vec3 normalize(Vec3 v) noexcept {
+    const f32 len = length(v);
+    if (len <= 1e-6f) return {0.0f, 0.0f, 0.0f};
+    return v * (1.0f / len);
+}
+
 } // namespace e3d

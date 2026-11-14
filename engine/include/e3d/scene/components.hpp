@@ -2,6 +2,7 @@
 
 #include "e3d/core/types.hpp"
 #include "e3d/reflect/registry.hpp"
+#include "e3d/render/types.hpp"
 
 #include <span>
 
@@ -29,6 +30,7 @@ public:
     float near_plane = 0.1f;
     float far_plane = 100.0f;
     bool stereo = false;
+    int cull_mask = -1;  // -1 = every layer
 
     static std::span<const PropDesc> properties();
 };
@@ -39,6 +41,11 @@ public:
 
     AssetRef mesh;
     AssetRef material;
+    int layer = 0;
+
+    // Resolved at runtime; not serialized.
+    MeshHandle mesh_handle;
+    MaterialHandle material_handle;
 
     static std::span<const PropDesc> properties();
 };

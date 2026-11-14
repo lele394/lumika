@@ -341,7 +341,7 @@ u32 vertex_count   u32 index_count
 u32 vertex_stride  u32 flags        // bit0 normal, bit1 uv, bit2 color
 f32 aabb_min[3]    f32 aabb_max[3]
 u32 reserved[2]
-vertices...        // pos f32x3; normal f32x3; uv f32x2; color u8x4 (optional)
+vertices...        // pos f32x3; colour f32x4; uv f32x2; normal f32x3 (48 bytes)
 indices...         // u16, 1 draw call per file
 ```
 
@@ -353,39 +353,43 @@ The engine emits a **render list**; backends only execute it. That is the whole 
 
 ```cpp
 struct CameraDesc {
-    Mat4 view, projection;
-    Rect viewport;
-    Screen screen;          // Top | Bottom
-    bool  stereo;
-    float eye_separation;   // metres, top screen only
+    Screen screen;              // Top | Bottom
+    Vec3 position, target, up;
+    float field_of_view, near_plane, far_plane;
     Color clear;
-    bool  clear_depth;
+    bool clear_depth;
+    bool stereo;
+    uint32_t cull_mask;         // per-camera layer filter
 };
 
 struct DrawItem {
+    uint8_t camera;
     MeshHandle mesh;
     MaterialHandle material;
-    Mat4 transform;
-    uint8_t layer;          // painter's order within a camera
+    Mat4 model;
 };
 
 class RenderList {
 public:
-    CameraHandle add_camera(const CameraDesc&);
-    void draw_mesh(CameraHandle, MeshHandle, MaterialHandle, const Mat4&);
-    void draw_text(CameraHandle, FontHandle, Vec2 pos, float scale, Color, std::string_view);
-    void draw_rect(CameraHandle, Rect, Color);
-    void draw_custom(CameraHandle, const CustomDraw&);   // raw escape hatch
+    void clear();
+    uint8_t add_camera(const CameraDesc&);
+    void draw(uint8_t camera, MeshHandle, MaterialHandle, const Mat4&);
 };
 ```
 
-- `Renderer::build(world, list, frame_arena)` walks cameras and `MeshRenderer` components, and lets
-  scripts append commands (raw API, §5).
-- The list is allocated from a per-frame arena; no allocation churn.
-- Draw items are sorted by `(material, mesh, layer)` to cut state changes.
-- `destroy()`/`create()` of GPU resources is deferred to the backend, never inline in a draw.
+Projection is **not** in the camera description: each backend builds it from the same
+fov/near/far/aspect inputs, because the 3DS wants `Mtx_PerspTilt` (and its y-flip) while the desktop
+wants a standard OpenGL perspective.
+
+- `Renderer::build(world, list)` walks cameras and `MeshRenderer` components, and lets scripts append
+  commands (raw API, §5).
+- The list reserves capacity once and is cleared per frame; the steady state performs no allocations.
+- Draw items are emitted in entity order for now. Sorting by `(material, mesh)` and dynamic batching
+  come with the textured/lit shaders.
+- GPU resources are created and destroyed through the device, never inline in a draw.
 - Two cameras is the normal case: one for the top screen, one for the bottom. A camera declares its
-  screen and viewport; the backend configures the render target accordingly.
+  screen; the backend configures the render target accordingly.
+- Visibility is a 32-bit mask: each camera has a `cull_mask`, each `MeshRenderer` a `layer`.
 - Stereo is per-camera and opt-in. It renders the camera twice with a horizontal eye offset and
   requires `gfxSet3D(true)`. Cost is roughly 2× GPU for that camera.
 
@@ -394,18 +398,24 @@ Device interface:
 ```cpp
 class RenderDevice {
 public:
-    virtual ~RenderDevice() = default;
-    virtual MeshHandle     create_mesh(const MeshData&) = 0;
-    virtual TextureHandle  create_texture(const TextureData&) = 0;
-    virtual MaterialHandle create_material(const MaterialDesc&) = 0;
-    virtual void destroy(Handle) = 0;
-    virtual void execute(const RenderList&) = 0;
+    virtual bool init() = 0;
+    virtual void shutdown() = 0;
+    virtual MeshHandle      create_mesh(const MeshData&) = 0;
+    virtual void            destroy_mesh(MeshHandle) = 0;
+    virtual MaterialHandle  create_material(const MaterialDesc&) = 0;
+    virtual void            destroy_material(MaterialHandle) = 0;
+    virtual void            execute(const RenderList&) = 0;
 };
 ```
 
 Shader library (MVP): `unlit_color`, `unlit_textured`, `lit_diffuse`, `lit_textured`, `sprite`, `text`.
-Each is a `picasso` output `.shbin` plus a fixed attribute/uniform layout; materials choose one and set
-parameters. No material graph, no user shader editing.
+`unlit_color` is implemented and verified; the rest follow the same attribute/uniform layout. Each is
+a `picasso` output `.shbin`, embedded at build time. Materials choose a shader and set parameters.
+No material graph, no user shader editing.
+
+The vertex format is fixed at 48 bytes: position f32×3, colour f32×4, uv f32×2, normal f32×3. PICA
+attribute registers are v0=position, v1=colour, v2=uv, v3=normal, with the buffer permutation
+`0x3210`.
 
 ### 3DS backend notes
 
