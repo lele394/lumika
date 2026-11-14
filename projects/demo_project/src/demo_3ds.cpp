@@ -168,6 +168,21 @@ int main() {
                 board_view = world.find_component<BoardView>(board);
             }
 
+            int board_cam = -1;
+            if (board_view != nullptr) {
+                for (const DrawItem& item : list.draws()) {
+                    if (item.mesh == board_view->handle) {
+                        board_cam = item.camera;
+                        break;
+                    }
+                }
+            }
+            int board_cam_screen = -1;
+            if (board_cam >= 0 && board_cam < static_cast<int>(list.cameras().size())) {
+                board_cam_screen =
+                    list.cameras()[static_cast<std::size_t>(board_cam)].screen == Screen::Top ? 0 : 1;
+            }
+
             unsigned cells = 0;
             if (game != nullptr) {
                 for (int i = 0; i < game->width * game->height; ++i) {
@@ -211,6 +226,8 @@ int main() {
                           "cam_bottom=%u\n"
                           "board_vertices=%d\n"
                           "board_update_ok=%d\n"
+                          "board_cam=%d\n"
+                          "board_cam_screen=%d\n"
                           "audio_device=%d\n"
                           "audio_clip=%d\n"
                           "audio_result=0x%08lx\n",
@@ -230,7 +247,8 @@ int main() {
                           static_cast<unsigned>(list.draws().size()), camera_draws[0],
                           camera_draws[1], cam_top, cam_bottom,
                           board_view != nullptr ? board_view->mesh_vertices : -1,
-                          board_view != nullptr && board_view->update_ok ? 1 : 0,
+                          board_view != nullptr && board_view->update_ok ? 1 : 0, board_cam,
+                          board_cam_screen,
                           audio_ready ? 1 : 0, beep_clip.valid() ? 1 : 0,
                           static_cast<unsigned long>(audio_device_3ds_last_result()));
             write_report(report);
