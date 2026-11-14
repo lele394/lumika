@@ -4,10 +4,12 @@
 
 #include <3ds.h>
 #include <citro3d.h>
+#include <tex3ds.h>
 
 #include <cstring>
 #include <memory>
 
+#include "lit_textured_shbin_data.h"
 #include "unlit_color_shbin_data.h"
 
 namespace {
@@ -44,9 +46,42 @@ struct GpuMesh final {
     u32 index_count = 0;
 };
 
+struct GpuTexture final {
+    C3D_Tex texture{};
+    bool valid = false;
+};
+
 struct GpuMaterial final {
     e3d::MaterialDesc desc;
 };
+
+struct GpuProgram final {
+    DVLB_s* dvlb = nullptr;
+    shaderProgram_s program{};
+    e3d::ShaderId shader = e3d::ShaderId::UnlitColor;
+    int mvp = -1;
+    int model = -1;
+    int light_dir = -1;
+    int tint = -1;
+    int params = -1;
+};
+
+bool load_program(GpuProgram& out, const void* data, std::size_t size, e3d::ShaderId shader) {
+    out.dvlb = DVLB_ParseFile(const_cast<u32*>(static_cast<const u32*>(data)),
+                              static_cast<u32>(size));
+    if (out.dvlb == nullptr) return false;
+
+    shaderProgramInit(&out.program);
+    shaderProgramSetVsh(&out.program, &out.dvlb->DVLE[0]);
+
+    out.shader = shader;
+    out.mvp = shaderInstanceGetUniformLocation(out.program.vertexShader, "mvp");
+    out.model = shaderInstanceGetUniformLocation(out.program.vertexShader, "model");
+    out.light_dir = shaderInstanceGetUniformLocation(out.program.vertexShader, "lightDir");
+    out.tint = shaderInstanceGetUniformLocation(out.program.vertexShader, "tint");
+    out.params = shaderInstanceGetUniformLocation(out.program.vertexShader, "params");
+    return out.mvp >= 0;
+}
 
 class Device3DS final : public e3d::RenderDevice {
 public:
@@ -65,16 +100,14 @@ public:
         C3D_RenderTargetSetOutput(top_, GFX_TOP, GFX_LEFT, kDisplayTransferFlags);
         C3D_RenderTargetSetOutput(bottom_, GFX_BOTTOM, GFX_LEFT, kDisplayTransferFlags);
 
-        dvlb_ = DVLB_ParseFile(const_cast<u32*>(reinterpret_cast<const u32*>(unlit_color_shbin)),
-                               static_cast<u32>(unlit_color_shbin_size));
-        if (dvlb_ == nullptr) return false;
-
-        shaderProgramInit(&program_);
-        shaderProgramSetVsh(&program_, &dvlb_->DVLE[0]);
-        C3D_BindProgram(&program_);
-
-        uniform_mvp_ = shaderInstanceGetUniformLocation(program_.vertexShader, "mvp");
-        uniform_tint_ = shaderInstanceGetUniformLocation(program_.vertexShader, "tint");
+        if (!load_program(unlit_, unlit_color_shbin, unlit_color_shbin_size,
+                          e3d::ShaderId::UnlitColor)) {
+            return false;
+        }
+        if (!load_program(lit_, lit_textured_shbin, lit_textured_shbin_size,
+                          e3d::ShaderId::LitTextured)) {
+            return false;
+        }
 
         C3D_AttrInfo* attributes = C3D_GetAttrInfo();
         AttrInfo_Init(attributes);
@@ -82,12 +115,6 @@ public:
         AttrInfo_AddLoader(attributes, 1, GPU_FLOAT, 4);  // colour
         AttrInfo_AddLoader(attributes, 2, GPU_FLOAT, 2);  // uv
         AttrInfo_AddLoader(attributes, 3, GPU_FLOAT, 3);  // normal
-
-        C3D_TexEnv* environment = C3D_GetTexEnv(0);
-        C3D_TexEnvInit(environment);
-        C3D_TexEnvSrc(environment, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR,
-                      GPU_PRIMARY_COLOR);
-        C3D_TexEnvFunc(environment, C3D_Both, GPU_REPLACE);
 
         C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
         C3D_CullFace(GPU_CULL_NONE);
@@ -107,11 +134,21 @@ public:
             mesh.indices = nullptr;
         });
 
-        if (dvlb_ != nullptr) {
-            shaderProgramFree(&program_);
-            DVLB_Free(dvlb_);
-            dvlb_ = nullptr;
+        textures_.for_each([](GpuTexture& texture) {
+            if (texture.valid) {
+                C3D_TexDelete(&texture.texture);
+                texture.valid = false;
+            }
+        });
+
+        for (GpuProgram* program : {&unlit_, &lit_}) {
+            if (program->dvlb != nullptr) {
+                shaderProgramFree(&program->program);
+                DVLB_Free(program->dvlb);
+                program->dvlb = nullptr;
+            }
         }
+
         if (top_ != nullptr) {
             C3D_RenderTargetDelete(top_);
             top_ = nullptr;
@@ -167,11 +204,35 @@ public:
 
     void destroy_material(e3d::MaterialHandle handle) override { materials_.remove(handle); }
 
+    e3d::TextureHandle create_texture(const e3d::TextureData& data) override {
+        if (data.data == nullptr || data.size == 0) return {};
+
+        GpuTexture texture;
+        Tex3DS_Texture imported =
+            Tex3DS_TextureImport(data.data, data.size, &texture.texture, nullptr, false);
+        if (!imported) return {};
+
+        Tex3DS_TextureFree(imported);
+        C3D_TexSetFilter(&texture.texture, GPU_LINEAR, GPU_LINEAR);
+        texture.valid = true;
+        return textures_.add(texture);
+    }
+
+    void destroy_texture(e3d::TextureHandle handle) override {
+        GpuTexture* texture = textures_.get(handle);
+        if (texture == nullptr) return;
+        if (texture->valid) {
+            C3D_TexDelete(&texture->texture);
+            texture->valid = false;
+        }
+        textures_.remove(handle);
+    }
+
     void execute(const e3d::RenderList& list) override {
         if (!initialized_) return;
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        C3D_BindProgram(&program_);
+        active_ = nullptr;
 
         for (std::size_t camera_index = 0; camera_index < list.cameras().size(); ++camera_index) {
             const e3d::CameraDesc& camera = list.cameras()[camera_index];
@@ -200,16 +261,45 @@ public:
                 const GpuMaterial* material = materials_.get(item.material);
                 if (mesh == nullptr || material == nullptr || mesh->vertices == nullptr) continue;
 
+                GpuProgram* program = material->desc.shader == e3d::ShaderId::LitTextured ? &lit_
+                                                                                        : &unlit_;
+                GpuTexture* texture = nullptr;
+                if (program->shader == e3d::ShaderId::LitTextured) {
+                    texture = textures_.get(material->desc.texture);
+                    if (texture == nullptr || !texture->valid) continue;
+                }
+
+                if (program != active_) {
+                    C3D_BindProgram(&program->program);
+                    configure_tev(program->shader);
+                    active_ = program;
+                }
+
                 C3D_Mtx model = to_c3d(item.model);
                 C3D_Mtx view_model;
                 C3D_Mtx mvp;
                 Mtx_Multiply(&view_model, &view, &model);
                 Mtx_Multiply(&mvp, &projection, &view_model);
 
-                C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uniform_mvp_, &mvp);
-                if (uniform_tint_ >= 0) {
+                C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, program->mvp, &mvp);
+                if (program->tint >= 0) {
                     const e3d::Color& tint = material->desc.tint;
-                    C3D_FVUnifSet(GPU_VERTEX_SHADER, uniform_tint_, tint.r, tint.g, tint.b, tint.a);
+                    C3D_FVUnifSet(GPU_VERTEX_SHADER, program->tint, tint.r, tint.g, tint.b, tint.a);
+                }
+                if (program->model >= 0) {
+                    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, program->model, &model);
+                }
+                if (program->light_dir >= 0) {
+                    const e3d::Vec3 light = e3d::normalize(material->desc.light_direction);
+                    C3D_FVUnifSet(GPU_VERTEX_SHADER, program->light_dir, light.x, light.y, light.z,
+                                  0.0f);
+                }
+                if (program->params >= 0) {
+                    C3D_FVUnifSet(GPU_VERTEX_SHADER, program->params, material->desc.ambient,
+                                  material->desc.diffuse, 0.0f, 0.0f);
+                }
+                if (texture != nullptr) {
+                    C3D_TexBind(0, &texture->texture);
                 }
 
                 C3D_BufInfo* buffers = C3D_GetBufInfo();
@@ -224,15 +314,30 @@ public:
     }
 
 private:
+    void configure_tev(e3d::ShaderId shader) {
+        C3D_TexEnv* environment = C3D_GetTexEnv(0);
+        C3D_TexEnvInit(environment);
+
+        if (shader == e3d::ShaderId::LitTextured) {
+            C3D_TexEnvSrc(environment, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR,
+                          GPU_PRIMARY_COLOR);
+            C3D_TexEnvFunc(environment, C3D_Both, GPU_MODULATE);
+        } else {
+            C3D_TexEnvSrc(environment, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR,
+                          GPU_PRIMARY_COLOR);
+            C3D_TexEnvFunc(environment, C3D_Both, GPU_REPLACE);
+        }
+    }
+
     bool initialized_ = false;
     C3D_RenderTarget* top_ = nullptr;
     C3D_RenderTarget* bottom_ = nullptr;
-    DVLB_s* dvlb_ = nullptr;
-    shaderProgram_s program_{};
-    int uniform_mvp_ = -1;
-    int uniform_tint_ = -1;
+    GpuProgram unlit_;
+    GpuProgram lit_;
+    GpuProgram* active_ = nullptr;
     e3d::HandlePool<e3d::MeshTag, GpuMesh> meshes_;
     e3d::HandlePool<e3d::MaterialTag, GpuMaterial> materials_;
+    e3d::HandlePool<e3d::TextureTag, GpuTexture> textures_;
 };
 
 } // namespace

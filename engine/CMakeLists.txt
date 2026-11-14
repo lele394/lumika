@@ -1,4 +1,5 @@
 add_library(e3d_core STATIC
+  src/assets/mesh_loader.cpp
   src/core/guid.cpp
   src/core/json.cpp
   src/core/log.cpp

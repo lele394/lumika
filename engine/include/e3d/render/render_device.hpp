@@ -19,6 +19,9 @@ public:
     virtual MaterialHandle create_material(const MaterialDesc& material) = 0;
     virtual void destroy_material(MaterialHandle material) = 0;
 
+    virtual TextureHandle create_texture(const TextureData& texture) = 0;
+    virtual void destroy_texture(TextureHandle texture) = 0;
+
     virtual void execute(const RenderList& list) = 0;
 };
 

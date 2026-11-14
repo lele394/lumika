@@ -409,9 +409,9 @@ public:
 ```
 
 Shader library (MVP): `unlit_color`, `unlit_textured`, `lit_diffuse`, `lit_textured`, `sprite`, `text`.
-`unlit_color` is implemented and verified; the rest follow the same attribute/uniform layout. Each is
-a `picasso` output `.shbin`, embedded at build time. Materials choose a shader and set parameters.
-No material graph, no user shader editing.
+`unlit_color` and `lit_textured` are implemented and verified; the rest follow the same
+attribute/uniform layout. Each is a `picasso` output `.shbin`, embedded at build time. Materials
+choose a shader and set parameters. No material graph, no user shader editing.
 
 The vertex format is fixed at 48 bytes: position f32×3, colour f32×4, uv f32×2, normal f32×3. PICA
 attribute registers are v0=position, v1=colour, v2=uv, v3=normal, with the buffer permutation

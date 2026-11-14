@@ -83,35 +83,37 @@ done), dirty-subtree transform caching, and a non-linear GUID index. None are ne
 
 ## M2 — Renderer and asset pipeline
 
-**Status: in progress.** Renderer core and dual-screen verification are done; textures, lighting and
-the asset tools remain.
+**Status: core complete.** Rendering, textures, lighting, mesh conversion and RomFS loading are
+verified. Remaining: scene-driven asset resolution, 2D text, the debug overlay, the zero-allocation
+measurement and stereo.
 
 **Goal:** a scene file with meshes, materials and cameras renders correctly on the device.
 
 Tasks:
 
 - [x] Citro3D device: init/shutdown, both render targets, clear, depth, per-camera projection.
-- [x] Shader pipeline: `picasso` → DVLB → build-time embedded blob; `unlit_color` (`mvp` + `tint`).
-- [x] Mesh upload (`linearAlloc`, `GSPGPU_FlushDataCache`), generation-checked handle pools, fixed
-      48-byte vertex format.
+- [x] Shader pipeline: `picasso` → DVLB → build-time embedded blob.
+- [x] `unlit_color` (tint) and `lit_textured` (per-face lighting + texture modulate).
+- [x] Mesh upload (`linearAlloc`, `GSPGPU_FlushDataCache`), generation-checked mesh/material/texture
+      handle pools, fixed 48-byte vertex format.
+- [x] `.t3x` textures through `Tex3DS_TextureImport`, filtering, texture binding.
+- [x] `meshc`: OBJ → `.cmesh`, AABB, u16 indices, validation; `tools/cook.ps1` regenerates cooked assets.
+- [x] RomFS packaging and runtime loading (`romfsInit`, `load_cmesh`, `create_texture`).
 - [x] Render list, `CameraDesc`, `MeshRenderer`, layer/cull-mask filtering, transform propagation.
-- [x] Dual-screen check: two cameras, two spinning triangles, 2 draws per frame.
-- [ ] Remaining shaders: `unlit_textured`, `lit_diffuse`, `lit_textured`, `sprite`, `text`.
-- [ ] Textures from `.t3x`; material JSON with texture slots.
-- [ ] `tools/meshc`: OBJ first, glTF via `cgltf`; AABB; u16 indices; validation.
-- [ ] `tools/fontc`: TTF → atlas + metrics; 2D sprite/text batcher.
+- [x] Dual-screen check: 2 cameras, 1 draw per camera, textured lit cube at 60 fps.
+- [ ] Material JSON + asset database: resolve `MeshRenderer` asset GUIDs from the scene to handles.
+- [ ] `unlit_textured`, `lit_diffuse`, `sprite`, `text` shaders.
+- [ ] `tools/fontc` and the 2D sprite/text batcher.
 - [ ] Draw sorting/batching; dynamic VBO triple buffering for the board.
 - [ ] Debug overlay: frame time, draw calls, triangles, heap high-water.
 - [ ] Zero-allocation measurement across a 600-frame run.
 - [ ] Optional: stereo camera path behind a flag.
 
-**Incremental acceptance (met):** `triangle3d.3dsx` renders two independent cameras and triangles,
-120 frames in 2006 ms (16.7 ms/frame), 2 draw calls, both screens confirmed.
+**Incremental acceptance (met):** `render_check.3dsx` loads its mesh and texture from RomFS, renders
+a lit textured cube on both cameras (1 draw each), 120 frames in 2004 ms (16.7 ms/frame).
 
-**Final acceptance:** a scene with a textured, lit cube on the top screen and a second camera on the
-bottom runs at 60 fps in Azahar; changing the clear colour in JSON changes the frame; the debug
-overlay can be toggled; the update/render loop performs **zero heap allocations** (counter measured
-across 600 frames).
+**Final acceptance:** the same cube rendered from a project scene JSON (clear colour, mesh and
+material references), plus the debug overlay and zero-allocation measurement.
 
 **Risk checkpoint:** if shader work overruns, cut to `unlit_textured` + `sprite` and defer lighting to
 M3. Do not cut the asset pipeline — it is on the critical path for the demo.

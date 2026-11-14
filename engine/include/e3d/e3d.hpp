@@ -3,6 +3,7 @@
 /// Public engine API. Project scripts should include only this header (or the
 /// individual headers under e3d/) and never platform SDK headers.
 
+#include "e3d/assets/mesh_loader.hpp"
 #include "e3d/core/arena.hpp"
 #include "e3d/core/guid.hpp"
 #include "e3d/core/json.hpp"

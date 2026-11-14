@@ -1,0 +1,58 @@
+; e3d lit, textured vertex shader
+; Inputs: v0 position, v2 uv, v3 normal
+; Uniforms: mvp[4], model[4], lightDir, tint, params (x=ambient, y=diffuse)
+
+.fvec mvp[4]
+.fvec model[4]
+.fvec lightDir[1]
+.fvec tint[1]
+.fvec params[1]
+
+.out outpos position
+.out outtc0 texcoord0
+.out outclr color
+
+.alias inpos v0
+.alias inuv  v2
+.alias innrm v3
+
+.constf one(1.0, 1.0, 1.0, 1.0)
+.constf zero(0.0, 0.0, 0.0, 0.0)
+
+.proc main
+	mov r0.xyz, inpos
+	mov r0.w, one.x
+
+	dp4 outpos.x, mvp[0], r0
+	dp4 outpos.y, mvp[1], r0
+	dp4 outpos.z, mvp[2], r0
+	dp4 outpos.w, mvp[3], r0
+
+	mov outtc0, inuv
+
+	; normal -> world (w = 0)
+	mov r1.xyz, innrm
+	mov r1.w, zero.x
+	dp4 r2.x, model[0], r1
+	dp4 r2.y, model[1], r1
+	dp4 r2.z, model[2], r1
+
+	; normalize
+	dp3 r3.x, r2, r2
+	rsq r3.x, r3.x
+	mul r2.xyz, r2.xyz, r3.x
+
+	; intensity = ambient + diffuse * max(dot(n, lightDir), 0)
+	dp3 r4.x, lightDir[0], r2
+	mov r5.x, zero.x
+	max r4.x, r4.x, r5.x
+	mov r6.x, params[0].x
+	mov r7.x, params[0].y
+	mul r4.x, r4.x, r7.x
+	add r4.x, r4.x, r6.x
+
+	mov outclr, tint[0]
+	mul outclr.xyz, outclr.xyz, r4.x
+
+	end
+.end

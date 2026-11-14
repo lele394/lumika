@@ -3,17 +3,18 @@
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
-**Status: M2 in progress.** The toolchain, scene data model, reflection/serialization and the
-Citro3D renderer core are verified. Remaining M2 work: textures, lighting, mesh/font tools and the
-debug overlay.
+**Status: M2 renderer core complete.** Cooked meshes, textures, the lit shader and both screens are
+verified at 60 FPS. Remaining M2 polish: scene-driven asset resolution (materials/AssetDb), 2D text,
+debug overlay, zero-allocation measurement and stereo.
 
 ## Verified so far
 
 | Check | Result |
 | --- | --- |
-| 3DS build | `tetris3d.3dsx`, `scene_check.3dsx`, `triangle3d.3dsx` via devkitARM r68, libctru 2.7.1 |
+| 3DS build | `tetris3d.3dsx`, `scene_check.3dsx`, `render_check.3dsx` via devkitARM r68, libctru 2.7.1 |
 | 3DS run | Citro2D smoke app on both screens at 60 FPS; `scene_check` reports `roundtrip=identical` |
-| Dual-screen 3D | `triangle3d`: 2 cameras, 2 draws, 120 frames in 2006 ms (16.7 ms/frame); both screens confirmed |
+| Dual-screen 3D | Two cameras, two draws (1 per screen), 16.7 ms/frame; both screens confirmed |
+| Textured lit 3D | `render_check`: RomFS `.cmesh` + `.t3x`, 36 verts, per-face lighting, 60 FPS |
 | Host build | MinGW GCC 16.2 + GLFW 3.5.1; OpenGL 3.3 core context opens |
 | Host tests | 32 test cases / 265 assertions pass via CTest |
 | Scene tool | `scene_dump` loads/prints/saves; second round-trip is byte-identical |
@@ -27,7 +28,9 @@ debug overlay.
   preservation, path-accurate load errors, deterministic output.
 - Renderer: render list, Citro3D device, two render targets, per-camera perspective, depth testing,
   layer/cull-mask filtering, mesh upload with generation-checked handles.
-- Shader pipeline: `picasso` → DVLB → build-time embedded blob; `unlit_color` with `mvp` + `tint`.
+- Shader pipeline: `picasso` → DVLB → build-time embedded blob; `unlit_color` and `lit_textured`
+  (per-face lighting, texture modulate).
+- Cooked assets: `meshc` (OBJ → `.cmesh`), `tex3ds` (PNG → `.t3x`), RomFS packaging, runtime loaders.
 - Device-side verification harnesses that write reports to the emulator's virtual SD.
 
 ## Layout
@@ -39,7 +42,7 @@ debug overlay.
 | `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned (M2) |
 | `editor/` | Dear ImGui editor | planned (M5) |
 | `projects/demo_project/` | Demo project: manifest, scene, smoke apps, device scene check | M1 |
-| `tools/` | `scene_dump`, build/run scripts | M1 |
+| `tools/` | `scene_dump`, `meshc`, `cook.ps1`, build/run scripts | M2 |
 | `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M1 |
 | `tests/` | Host-side unit tests | M1 |
 | `docs/` | Assessment, architecture, roadmap | done |
