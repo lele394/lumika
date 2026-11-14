@@ -1,4 +1,4 @@
-# Architecture (proposed)
+# Lumika architecture
 
 This is the design the MVP is built against. It is deliberately smaller than `prelim_design.md`:
 one engine core, one data model, two thin platform backends.

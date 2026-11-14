@@ -1,4 +1,4 @@
-# Roadmap
+# Lumika roadmap
 
 The sequence is deliberate: **toolchain → data → rendering → scripts → game → editor**. The editor is
 last because it can only be as good as the data model it edits, and the data model can only be judged

@@ -1,4 +1,4 @@
-# 3ds-engine
+# Lumika
 
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
@@ -76,6 +76,8 @@ Without it `ndspInit()` fails with `0xD880A7FA` and the engine runs silently.
 - `docs/00-assessment.md` — feasibility review of `prelim_design.md`, scope cuts, risks
 - `docs/01-architecture.md` — engine design, formats, APIs
 - `docs/02-roadmap.md` — milestones with acceptance criteria
+- `docs/10-getting-started.md` — toolchain, build, project creation, assets
+- `docs/11-engine-manual.md` — runtime API, scripts, rendering, audio
 - `prelim_design.md` — original notes, kept for history
 
 ## Build
