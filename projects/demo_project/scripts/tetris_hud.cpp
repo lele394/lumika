@@ -47,6 +47,8 @@ void TetrisHud::on_render(e3d::RenderList& list) {
     }
 
     e3d::draw_text(list, font, e3d::Screen::Bottom, 8.0f, 8.0f, 1.0f, kWhite, "NEXT");
+    e3d::draw_text(list, font, e3d::Screen::Bottom, 232.0f, 78.0f, 1.5f,
+                   e3d::Color{0.55f, 0.75f, 1.0f, 1.0f}, "NEXT");
 
     std::snprintf(buffer, sizeof(buffer), "LEVEL %d", game->level);
     e3d::draw_text(list, font, e3d::Screen::Bottom, 8.0f, 28.0f, 1.0f, kWhite, buffer);
