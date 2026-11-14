@@ -3,30 +3,40 @@
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
-**Status: M0 complete.** The toolchain, cross/host builds, packaging and emulator boot are verified.
-The engine itself starts at M1 (see `docs/02-roadmap.md`).
+**Status: M1 complete.** The toolchain, cross/host builds, packaging, emulator boot, scene data model,
+reflection/serialization and scene round-tripping are verified. Next: M2 (renderer + asset pipeline).
 
 ## Verified so far
 
 | Check | Result |
 | --- | --- |
-| 3DS build | `tetris3d.elf` → `tetris3d.3dsx` (150 KB) via devkitARM r68, libctru 2.7.1 |
-| 3DS run | Boots in Azahar 2126.2; Citro2D triangle on top screen, animated square on bottom, 60 FPS, 3.5 ms frame |
+| 3DS build | `tetris3d.3dsx` and `scene_check.3dsx` via devkitARM r68, libctru 2.7.1 |
+| 3DS run | Citro2D smoke app on both screens at 60 FPS; `scene_check` reports `roundtrip=identical`, 0 warnings |
 | Host build | MinGW GCC 16.2 + GLFW 3.5.1; OpenGL 3.3 core context opens |
-| Host tests | doctest suite passes via CTest |
+| Host tests | 32 test cases / 265 assertions pass via CTest |
+| Scene tool | `scene_dump` loads/prints/saves; second round-trip is byte-identical |
+
+## What works now
+
+- 128-bit GUIDs, generation-checked entity ids, JSON parser/writer, bump arena, Vec/Mat4/Quat math.
+- Component registry with typed properties (`E3D_COMPONENT` / `E3D_PROP`), no code generation.
+- `World`: entity hierarchy, cycle-safe reparenting, transform composition, component ownership.
+- Scene load/save: two-pass entity references, asset reference guids, unknown component and property
+  preservation, path-accurate load errors, deterministic output.
+- Device-side verification harness that loads a scene on ARM and writes its report to the SD card.
 
 ## Layout
 
 | Path | Purpose | Status |
 | --- | --- | --- |
-| `engine/` | Portable C++20 core: types, log; later scene, reflect, assets, render, audio | M0 |
+| `engine/` | Portable C++20 core: types, math, GUID, JSON, registry, scene, serialization | M1 |
 | `engine/platform/3ds/` | libctru + Citro3D + NDSP backend | planned (M2) |
 | `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned (M2) |
 | `editor/` | Dear ImGui editor | planned (M5) |
-| `projects/demo_project/` | Demo project: manifest, sources, later scenes/assets/scripts | M0 |
-| `tools/` | Host converters and build/run scripts | M0 |
-| `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M0 |
-| `tests/` | Host-side unit tests | M0 |
+| `projects/demo_project/` | Demo project: manifest, scene, smoke apps, device scene check | M1 |
+| `tools/` | `scene_dump`, build/run scripts | M1 |
+| `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M1 |
+| `tests/` | Host-side unit tests | M1 |
 | `docs/` | Assessment, architecture, roadmap | done |
 
 ## Docs
@@ -55,6 +65,12 @@ Under the hood:
   `ctr_create_3dsx()` packaging helper. devkitPro's toolchain refuses to run under native Windows
   CMake, so 3DS builds are driven through `bash`.
 - Outputs: `build/desktop/.../tetris3d.exe`, `build/3ds/projects/demo_project/tetris3d.3dsx`.
+
+Inspect or round-trip a scene on the host:
+
+```powershell
+.\build\desktop\tools\scene_dump.exe .\projects\demo_project\scenes\main.scene.json out.json
+```
 
 ## Toolchain (installed locally, no admin)
 

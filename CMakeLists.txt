@@ -17,5 +17,6 @@ add_subdirectory(projects/demo_project)
 
 if(NOT E3D_3DS)
   include(CTest)
+  add_subdirectory(tools)
   add_subdirectory(tests)
 endif()

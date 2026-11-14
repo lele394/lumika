@@ -96,17 +96,15 @@ This is the foundation. Everything else reads from it.
 
 ```cpp
 // engine/include/e3d/reflect/registry.hpp
-using TypeId = uint32_t;                       // FNV-1a of the type name
-
 enum class PropType : uint8_t {
-    Bool, Int, Float, Vec2, Vec3, Vec4, Color, Enum, String, Asset, Entity
+    Bool, Int, Float, Vec2, Vec3, Vec4, Color, Enum, String, AssetRef, EntityRef
 };
 
 struct PropMeta {
     float min = 0, max = 0, step = 0.01f;
     const char* tooltip = nullptr;
-    const char* const* enum_names = nullptr;   // Enum
-    const char* asset_type = nullptr;          // Asset: "mesh", "texture", ...
+    const char* const* enum_names = nullptr;   // Enum, null-terminated
+    const char* asset_type = nullptr;          // "mesh", "texture", ...
     bool hidden = false;
     bool read_only = false;
 };
@@ -114,79 +112,80 @@ struct PropMeta {
 struct PropDesc {
     const char* name;
     PropType type;
-    void* (*get)(void* component);                                  // raw value address
-    bool  (*from_json)(void* component, const JsonValue&, LoadCtx&);
-    void  (*to_json)(const void* component, JsonWriter&, SaveCtx&);
+    uint8_t size;                    // sizeof(member); used for enums
+    void* (*get)(void* component);   // address of the member
     PropMeta meta;
 };
 
 struct ComponentDesc {
     const char* name;          // stable, serialized
-    TypeId id;
+    TypeId id;                 // FNV-1a of the name
     size_t size;
     ComponentKind kind;        // Engine or Script
-    Component* (*create)(Entity&);
+    Component* (*create)();    // the world binds the entity afterwards
     void (*destroy)(Component*);
     const PropDesc* props;
     uint32_t prop_count;
-    const char* const* requires;   // other component type names
-    const char* category;          // editor grouping
+    const char* category;      // editor grouping
 };
 ```
 
-Registration is order-safe (Meyers singleton, no static-init fiasco):
+Registration is order-safe; descriptors are function-local statics:
 
 ```cpp
-// engine/include/e3d/reflect/registry.hpp
-bool register_component(const ComponentDesc*);
-
-#define E3D_REGISTER_COMPONENT(TYPE)                                        \
-    namespace {                                                             \
-    const bool TYPE##_e3d_registered =                                      \
-        ::e3d::register_component(&::e3d::descriptor_of<TYPE>());           \
+#define E3D_COMPONENT(TYPE, BASE)                                           \
+    using BaseClass = BASE;                                                 \
+    static const ::e3d::ComponentDesc* static_descriptor();                 \
+    static constexpr ::e3d::TypeId static_type_id() noexcept {              \
+        return ::e3d::hash_name(#TYPE);                                     \
+    }                                                                       \
+    const ::e3d::ComponentDesc* descriptor() const override {               \
+        return static_descriptor();                                         \
     }
 
-// engine/include/e3d/scene/component.hpp
-#define E3D_COMPONENT(TYPE, BASE)                                           \
-    using Base = BASE;                                                      \
-    static ::e3d::ComponentDesc* e3d_descriptor();                          \
-    ::e3d::ComponentDesc* descriptor() const override { return e3d_descriptor(); }
+#define E3D_IMPLEMENT_COMPONENT(TYPE) /* defines static_descriptor() */
+#define E3D_REGISTER_COMPONENT(TYPE)  /* implementation + static registrar */
 ```
 
-Property declaration is explicit and readable:
+Property declaration uses a member pointer as a template argument, so there are no offsets,
+no code generation and no captured lambdas:
 
 ```cpp
 class TetrisGame final : public ScriptComponent {
 public:
     E3D_COMPONENT(TetrisGame, ScriptComponent)
 
-    float  fall_interval = 0.8f;
-    int    start_level   = 1;
-    bool   hard_drop     = true;
-    Vec3   spawn_offset  { 0, 10, 0 };
-    AssetRef<AudioClip> move_sound;
+    float fall_interval = 0.8f;
+    int   start_level   = 1;
+    bool  hard_drop     = true;
+    Vec3  spawn_offset  {0, 10, 0};
+    AssetRef move_sound;
 
-    static const e3d::PropDesc* properties() {
-        static const e3d::PropDesc props[] = {
-            E3D_PROP(fall_interval).range(0.05f, 2.0f).step(0.01f).tooltip("Seconds per gravity step"),
-            E3D_PROP(start_level).range(1, 20),
-            E3D_PROP(hard_drop),
-            E3D_PROP(spawn_offset),
-            E3D_PROP(move_sound).asset("audio"),
+    static std::span<const PropDesc> properties() {
+        static const PropDesc props[] = {
+            E3D_PROP(TetrisGame, fall_interval).range(0.05f, 2.0f).step(0.01f),
+            E3D_PROP(TetrisGame, start_level).range(1, 20),
+            E3D_PROP(TetrisGame, hard_drop),
+            E3D_PROP(TetrisGame, spawn_offset),
+            E3D_PROP(TetrisGame, move_sound).asset_type("audio"),
         };
-        return props;
+        return {props, std::size(props)};
     }
-
-    void on_start() override;
-    void on_update(float dt) override;
 };
 
-E3D_REGISTER_COMPONENT(TetrisGame)
+E3D_IMPLEMENT_COMPONENT(TetrisGame)
+E3D_REGISTER_COMPONENT(TetrisGame)   // scripts self-register; built-ins explicitly
 ```
 
-`E3D_PROP(member)` expands to a builder that stores `&TetrisGame::member`, deduces the value type,
-and installs a type-erased getter plus a JSON codec. Add a property = one line; the inspector,
-serializer, prefab override and defaults all pick it up.
+`E3D_PROP(TetrisGame, member)` is `make_property<TetrisGame, &TetrisGame::member>("member")`.
+It deduces the member type, selects the `PropType`, and installs `member_getter`. The JSON codec
+switches on `PropType` once, so adding a property costs one line and updates loading, saving,
+defaults and (later) the inspector together.
+
+One deliberate constraint: built-in components register through an explicit
+`register_builtin_components()` rather than static initializers, because linkers are free to drop
+object files from static libraries. Project scripts can use `E3D_REGISTER_COMPONENT` because their
+translation units are always linked into the game binary.
 
 Rules that keep this honest:
 
@@ -194,7 +193,8 @@ Rules that keep this honest:
 - Property names are the serialized keys. Renaming is a format change.
 - Unknown JSON keys are preserved verbatim per component (see §6) so an older runtime or a partial
   editor cannot silently delete data.
-- `requires` is validated at attach time and reported as a load error, not a crash.
+- Dependencies between components are not enforced in M1. The plan is an optional `requires` list on
+  `ComponentDesc`, validated at attach time once script registration lands.
 
 ## 5. World, entities, components, transforms
 
@@ -209,7 +209,6 @@ struct Entity {
     std::string name;
     Transform transform;                   // local TRS
     Mat4      world;                       // cached
-    uint32_t  dirty_flags;
     std::vector<EntityId> children;
     std::vector<Component*> components;    // stable addresses
 };
@@ -217,18 +216,21 @@ struct Entity {
 
 - `World` owns a dense entity pool with a free list; destroying an entity bumps the generation so stale
   `EntityId`s fail validation instead of aliasing.
-- Components are allocated from per-type pools (`std::vector<std::unique_ptr<Component>>` + free
-  indices). Stability of pointers matters more than cache locality at this scale.
-- Transform composition is top-down, once per frame, only for dirty subtrees. Local TRS is
-  position/quaternion/scale; the matrix is cached.
+- Each entity owns its components (`std::vector<Component*>`), created through the registry descriptor
+  and destroyed through it. Pointers are stable; lookups are linear over a handful of components,
+  which is the right trade at this scale.
+- Transform composition is recomputed top-down on `update_transforms()` (parents before children).
+  Local rotation is stored as Euler degrees and converted to a quaternion for the matrix, so authored
+  values stay readable and save/load is lossless. Dirty-subtree caching is a later optimization.
 - Update order is deterministic: entities in creation order, components in attachment order. Scripts
   do not influence each other's order implicitly.
 - `ScriptComponent` adds the lifecycle hooks (`on_create`, `on_awake`, `on_start`, `on_enable`,
-  `on_update`, `on_fixed_update`, `on_disable`, `on_destroy`) and a pointer to its `Entity`.
+  `on_update`, `on_fixed_update`, `on_disable`, `on_destroy`) and reaches its owner through
+  `Component::entity()`.
 - Fixed step: 60 Hz accumulator for `on_fixed_update`; `on_update` gets the variable frame delta,
-  clamped. Both are exposed to scripts; the project decides what uses which.
-- Raw access is first-class: `world.get<Transform>(id)`, `entity.find_component(type_id)`,
-  `world.query<Camera>()`. No required use of components for rendering or input.
+  clamped. Both are exposed to scripts; the project decides what uses which (M3).
+- Raw access is first-class: `world.entity(id)->transform`, `world.find_component<Camera>(id)`,
+  `entity->find_component(type_id)`. No required use of components for rendering or input.
 
 Scripts stay portable: they see `World`, `InputState`, `RenderList`-building APIs, and assets — never
 `hidKeysDown`, `C3D_*` or other platform headers.

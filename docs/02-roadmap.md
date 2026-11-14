@@ -46,26 +46,39 @@ host tests pass. Note: the official devkitPro CMake toolchain only runs under MS
 
 ## M1 — Core data model
 
+**Status: done and verified (host + Azahar).**
+
 **Goal:** a scene can be created in code, saved, reloaded, and inspected without a renderer.
 
 Tasks:
 
-- [ ] `core/types.hpp`: fixed-width types, `Guid` (128-bit), `EntityId` (index + generation),
+- [x] `core/types.hpp`: fixed-width types, `Guid` (128-bit), `EntityId` (index + generation),
       handle template, `E3D_ASSERT`, `E3D_LOG`.
-- [ ] `core/memory`: arena allocator, fixed pool; allocation counters.
-- [ ] `core/json`: tokenizer/parser and writer (no allocation in the writer path, deterministic output).
-- [ ] `reflect/registry`: `ComponentDesc`, `PropDesc`, `E3D_COMPONENT`, `E3D_PROP`, registration.
-- [ ] Property codecs: bool, int, float, vec2/3/4, colour, enum, string, asset ref, entity ref.
-- [ ] `scene/world`: entity pool with generations, hierarchy, dirty transforms, component pools,
-      deterministic update order.
-- [ ] Scene load/save with a two-pass reference resolver and unknown-key preservation.
-- [ ] `tools/scene_dump` host utility: load, print tree, save.
-- [ ] Tests: round-trip equality, hierarchy transforms, dangling reference errors, default filling,
-      unknown-key preservation.
+- [x] `core/arena.hpp` bump allocator; `core/guid` format/parse/generate; `core/math` Vec/Mat4/Quat.
+- [x] `core/json`: parser, deterministic writer, preserved object order, no exceptions.
+- [x] `reflect/registry`: `ComponentDesc`, `PropDesc`, `E3D_COMPONENT`, `E3D_PROP`, registration.
+- [x] Property codecs: bool, int, float, vec2/3/4, colour, enum, string, asset ref, entity ref.
+- [x] `scene/world`: entity pool with generations, hierarchy, transforms, component ownership,
+      deterministic order, cycle-safe reparenting.
+- [x] Scene load/save with a two-pass reference resolver, unknown-key preservation, unknown-component
+      preservation, path-accurate errors.
+- [x] `tools/scene_dump` host utility: load, print tree, save.
+- [x] Tests: JSON, GUID, math, registry, property codecs, world, scene round-trip, dangling refs,
+      defaults, flattened props, malformed documents.
+- [x] Device check: `projects/demo_project/src/scene_check_3ds.cpp` loads a scene on ARM and writes a
+      report to the SD card.
 
-**Acceptance:** `scene_dump in.scene.json out.scene.json` is byte-identical for a hand-written scene;
-a component property changed through its `PropDesc` appears in the output; references resolve in a
-second pass; no host-incompatible includes in `engine/`.
+**Acceptance:** two-pass save of a loaded scene is byte-identical to the first save; a component
+property changed through its `PropDesc` appears in the output; references resolve in a second pass;
+`engine/` has no host-only includes.
+
+**Verified:** 32 test cases / 265 assertions pass. `scene_dump` round-trips `main.scene.json` with
+identical output on the second pass. `scene_check.3dsx` in Azahar reports:
+`entities=2, target_resolved=1, legacy_preserved=1, asset_preserved=1, child_world_y_milli=2000,
+reload_ok=1, roundtrip=identical, warnings=0`.
+
+**Deferred within M1:** `requires` validation, top-level unknown-key preservation (component-level is
+done), dirty-subtree transform caching, and a non-linear GUID index. None are needed by the demo.
 
 ## M2 — Renderer and asset pipeline
 

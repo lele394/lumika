@@ -1,5 +1,12 @@
 add_library(e3d_core STATIC
+  src/core/guid.cpp
+  src/core/json.cpp
   src/core/log.cpp
+  src/reflect/registry.cpp
+  src/scene/components.cpp
+  src/scene/prop_io.cpp
+  src/scene/scene_io.cpp
+  src/scene/world.cpp
 )
 
 target_include_directories(e3d_core PUBLIC include)
