@@ -294,6 +294,7 @@ public:
         C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
         C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
         active_ = nullptr;
+        bool sprites_drawn[2] = {false, false};
 
         for (std::size_t camera_index = 0; camera_index < list.cameras().size(); ++camera_index) {
             const e3d::CameraDesc& camera = list.cameras()[camera_index];
@@ -377,10 +378,14 @@ public:
                 C3D_DrawElements(GPU_TRIANGLES, static_cast<int>(mesh->index_count),
                                  C3D_UNSIGNED_SHORT, mesh->indices);
             }
-        }
 
-        draw_sprites(list, e3d::Screen::Top, 400.0f, 240.0f);
-        draw_sprites(list, e3d::Screen::Bottom, 320.0f, 240.0f);
+            const int screen_index = camera.screen == e3d::Screen::Top ? 0 : 1;
+            if (!sprites_drawn[screen_index]) {
+                sprites_drawn[screen_index] = true;
+                draw_sprites(list, camera.screen,
+                             camera.screen == e3d::Screen::Top ? 400.0f : 320.0f, 240.0f);
+            }
+        }
 
         C3D_FrameEnd(0);
     }
@@ -397,7 +402,7 @@ private:
         if (!any) return;
 
         C3D_RenderTarget* target = screen == e3d::Screen::Top ? top_ : bottom_;
-        C3D_FrameDrawOn(target);
+        (void)target;
         C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_ALL);
         // Text/UI is composited additively: the atlas is black-backed, so black
         // pixels are a no-op without needing a working alpha channel.
@@ -483,6 +488,7 @@ private:
         }
 
         C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
+        C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
     }
 
 private:
