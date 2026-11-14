@@ -16,7 +16,9 @@ public:
     virtual void on_disable() {}
     virtual void on_destroy() {}
 
+    bool created = false;
     bool started = false;
+    bool enable_notified = false;
 };
 
 } // namespace e3d

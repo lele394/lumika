@@ -5,6 +5,21 @@ add_library(e3d_render_3ds STATIC
 target_include_directories(e3d_render_3ds PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(e3d_render_3ds PUBLIC e3d_core citro3d)
 
+add_library(e3d_audio_3ds STATIC
+  src/audio_device_3ds.cpp
+)
+
+target_include_directories(e3d_audio_3ds PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(e3d_audio_3ds PUBLIC e3d_core ctru)
+
+add_library(e3d_io_3ds STATIC
+  src/file_system_3ds.cpp
+  src/input_3ds.cpp
+)
+
+target_include_directories(e3d_io_3ds PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(e3d_io_3ds PUBLIC e3d_core ctru)
+
 # --- shaders ---------------------------------------------------------------
 find_program(E3D_PICASSO picasso HINTS "${DEVKITPRO}/tools/bin" REQUIRED)
 

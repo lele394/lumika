@@ -1,5 +1,6 @@
 #pragma once
 
+#include "e3d/audio/audio.hpp"
 #include "e3d/core/types.hpp"
 #include "e3d/reflect/registry.hpp"
 #include "e3d/render/types.hpp"
@@ -46,6 +47,19 @@ public:
     // Resolved at runtime; not serialized.
     MeshHandle mesh_handle;
     MaterialHandle material_handle;
+
+    static std::span<const PropDesc> properties();
+};
+
+class AudioSource final : public Component {
+public:
+    E3D_COMPONENT(AudioSource, Component)
+
+    AssetRef clip;
+    float volume = 1.0f;
+    bool loop = false;
+
+    ClipHandle clip_handle;
 
     static std::span<const PropDesc> properties();
 };

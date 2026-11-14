@@ -3,45 +3,46 @@
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
-**Status: M2 renderer core complete.** Cooked meshes, textures, the lit shader and both screens are
-verified at 60 FPS. Remaining M2 polish: scene-driven asset resolution (materials/AssetDb), 2D text,
-debug overlay, zero-allocation measurement and stereo.
+**Status: M3 complete except audio playback verification.** The demo project now loads
+`main.scene.json`, resolves mesh/material/audio assets through a cooked manifest, runs C++ script
+components (two spinning cubes), and drives both screens at 60 FPS. NDSP is implemented; Azahar
+rejects `ndspInit()` without DSP system files (`0xD880A7FA`), so audio playback needs hardware.
 
 ## Verified so far
 
 | Check | Result |
 | --- | --- |
-| 3DS build | `tetris3d.3dsx`, `scene_check.3dsx`, `render_check.3dsx` via devkitARM r68, libctru 2.7.1 |
+| 3DS build | `tetris3d`, `scene_check`, `render_check`, `demo3d` via devkitARM r68, libctru 2.7.1 |
 | 3DS run | Citro2D smoke app on both screens at 60 FPS; `scene_check` reports `roundtrip=identical` |
-| Dual-screen 3D | Two cameras, two draws (1 per screen), 16.7 ms/frame; both screens confirmed |
-| Textured lit 3D | `render_check`: RomFS `.cmesh` + `.t3x`, 36 verts, per-face lighting, 60 FPS |
-| Host build | MinGW GCC 16.2 + GLFW 3.5.1; OpenGL 3.3 core context opens |
-| Host tests | 32 test cases / 265 assertions pass via CTest |
-| Scene tool | `scene_dump` loads/prints/saves; second round-trip is byte-identical |
+| Dual-screen 3D | Two cameras, 1 draw per screen, 16.6 ms/frame; both screens confirmed |
+| Textured lit 3D | Cooked `.cmesh` + `.t3x`, per-face lighting, 60 FPS |
+| Scene-driven demo | Manifest + material JSON + 3 scripts; 109.8° scripted rotation; 0 warnings |
+| Host tests | 41 test cases / 314 assertions pass via CTest |
+| Audio | WAV parser and NDSP backend implemented; clip loads, playback blocked by Azahar DSP |
 
 ## What works now
 
 - 128-bit GUIDs, generation-checked entity ids, JSON parser/writer, bump arena, Vec/Mat4/Quat math.
 - Component registry with typed properties (`E3D_COMPONENT` / `E3D_PROP`), no code generation.
 - `World`: entity hierarchy, cycle-safe reparenting, transform composition, component ownership.
-- Scene load/save: two-pass entity references, asset reference guids, unknown component and property
-  preservation, path-accurate load errors, deterministic output.
-- Renderer: render list, Citro3D device, two render targets, per-camera perspective, depth testing,
-  layer/cull-mask filtering, mesh upload with generation-checked handles.
-- Shader pipeline: `picasso` → DVLB → build-time embedded blob; `unlit_color` and `lit_textured`
-  (per-face lighting, texture modulate).
-- Cooked assets: `meshc` (OBJ → `.cmesh`), `tex3ds` (PNG → `.t3x`), RomFS packaging, runtime loaders.
-- Device-side verification harnesses that write reports to the emulator's virtual SD.
+- Scene load/save: two-pass entity references, asset GUIDs, unknown data preservation, deterministic
+  output.
+- Asset pipeline: `meshc` (OBJ → `.cmesh`), `tex3ds` (PNG → `.t3x`), manifest, material JSON, RomFS.
+- Renderer: render list, Citro3D device, two targets, per-camera perspective, depth, layer masks,
+  `unlit_color` and `lit_textured` shaders, textures, mesh upload with handle pools.
+- Runtime: script lifecycle (`on_create/start/enable/update/fixed/disable/destroy`), fixed 60 Hz step,
+  portable input state, audio API, deterministic dispatch order.
+- Project scripts are plain C++ components compiled into the game; the scene references them by type.
 
 ## Layout
 
 | Path | Purpose | Status |
 | --- | --- | --- |
-| `engine/` | Portable C++20 core: types, math, GUID, JSON, registry, scene, serialization, render list | M2 (partial) |
-| `engine/platform/3ds/` | libctru + Citro3D device, shader pipeline | M2 (partial) |
-| `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned (M2) |
-| `editor/` | Dear ImGui editor | planned (M5) |
-| `projects/demo_project/` | Demo project: manifest, scene, smoke apps, device scene check | M1 |
+| `engine/` | Core: scene, reflection, assets, render list, runtime, audio API | M3 |
+| `engine/platform/3ds/` | Citro3D device, NDSP audio, HID, RomFS | M3 |
+| `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned |
+| `editor/` | Dear ImGui editor | planned (M6) |
+| `projects/demo_project/` | Scene, assets, scripts, demo apps | M3 |
 | `tools/` | `scene_dump`, `meshc`, `cook.ps1`, build/run scripts | M2 |
 | `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M1 |
 | `tests/` | Host-side unit tests | M1 |

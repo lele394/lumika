@@ -15,7 +15,9 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $projectDir = Join-Path $root $Project
 $cookedModels = Join-Path $projectDir 'assets\cooked\models'
 $cookedTextures = Join-Path $projectDir 'assets\cooked\textures'
-New-Item -ItemType Directory -Force $cookedModels, $cookedTextures | Out-Null
+$cookedMaterials = Join-Path $projectDir 'assets\cooked\materials'
+$cookedAudio = Join-Path $projectDir 'assets\cooked\audio'
+New-Item -ItemType Directory -Force $cookedModels, $cookedTextures, $cookedMaterials, $cookedAudio | Out-Null
 
 $meshc = Join-Path $root 'build\desktop\tools\meshc.exe'
 $tex3ds = Join-Path $env:DEVKITPRO 'tools\bin\tex3ds.exe'
@@ -31,5 +33,9 @@ Get-ChildItem (Join-Path $projectDir 'assets\textures') -Filter *.png | ForEach-
     & $tex3ds -o $out $_.FullName
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
+
+Copy-Item (Join-Path $projectDir 'assets\materials\*.mat.json') $cookedMaterials -Force -ErrorAction SilentlyContinue
+Copy-Item (Join-Path $projectDir 'assets\manifest.json') (Join-Path $projectDir 'assets\cooked\manifest.json') -Force
+Copy-Item (Join-Path $projectDir 'assets\audio\*.wav') $cookedAudio -Force -ErrorAction SilentlyContinue
 
 Write-Host "Cooked assets written under $projectDir\assets\cooked"

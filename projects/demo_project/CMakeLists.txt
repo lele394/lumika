@@ -18,6 +18,19 @@ if(NINTENDO_3DS)
   add_executable(render_check src/render_check_3ds.cpp)
   target_link_libraries(render_check PRIVATE e3d_core e3d_render_3ds)
   ctr_create_3dsx(render_check ROMFS ${E3D_ROMFS_DIR})
+
+  # M3 demo: scene-driven meshes/materials/scripts + input + NDSP audio.
+  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scenes/main.scene.json DESTINATION ${E3D_ROMFS_DIR})
+
+  add_executable(demo3d
+    src/demo_3ds.cpp
+    scripts/spin.cpp
+    scripts/play_sound.cpp
+    scripts/register.cpp
+  )
+  target_include_directories(demo3d PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/scripts)
+  target_link_libraries(demo3d PRIVATE e3d_core e3d_render_3ds e3d_audio_3ds e3d_io_3ds)
+  ctr_create_3dsx(demo3d ROMFS ${E3D_ROMFS_DIR})
 else()
   find_package(glfw3 CONFIG REQUIRED)
 

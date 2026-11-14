@@ -227,8 +227,8 @@ struct Entity {
 - `ScriptComponent` adds the lifecycle hooks (`on_create`, `on_awake`, `on_start`, `on_enable`,
   `on_update`, `on_fixed_update`, `on_disable`, `on_destroy`) and reaches its owner through
   `Component::entity()`.
-- Fixed step: 60 Hz accumulator for `on_fixed_update`; `on_update` gets the variable frame delta,
-  clamped. Both are exposed to scripts; the project decides what uses which (M3).
+- Fixed step: 60 Hz accumulator in `Runtime`; `on_fixed_update` gets the fixed delta, `on_update` the
+  variable clamped delta. `Runtime` also owns pause, time scale and the script context.
 - Raw access is first-class: `world.entity(id)->transform`, `world.find_component<Camera>(id)`,
   `entity->find_component(type_id)`. No required use of components for rendering or input.
 
@@ -319,8 +319,14 @@ to change later.
 
 ## 7. Assets
 
-- `AssetDb` scans `assets/`, reads `*.meta` sidecars, builds `Guid → path` and `path → Guid`.
-- `.meta` files are tiny: `{ "guid": "...", "importer": "mesh", "version": 1 }`. They are committed.
+- `AssetDb` loads a cooked `manifest.json` (`guid`, `type`, `path`); `AssetManager` loads and caches
+  device handles per GUID.
+- Cooking (`tools/cook.ps1`) produces `.cmesh` (OBJ), `.t3x` (PNG), copies material JSON and the
+  manifest into `assets/cooked/`, which is staged into RomFS.
+- Materials are JSON: shader (`unlit_color`/`lit_textured`), tint, ambient, diffuse, light direction
+  and an optional texture GUID.
+- After a scene loads, `resolve_scene_assets` walks `MeshRenderer` and `AudioSource` components and
+  fills their runtime handles; missing assets become warnings, not crashes.
 - Loaders are synchronous in the MVP; loads happen at scene load, not per frame.
 - Handles are generation-checked indices; a stale handle asserts in debug and no-ops in release.
 
@@ -453,10 +459,12 @@ public:
 };
 ```
 
-- Device: `ndspInit()`, fixed pool of voices (start with 8), PCM16, 32000 Hz stereo output; clips are
-  uploaded to `linearAlloc` memory and referenced with `ndspChnWaveBufAdd`.
-- Desktop: miniaudio with the same semantics, so behaviour matches closely enough to author against.
+- Device: `ndspInit()`, eight channels, PCM16 mono/stereo, per-channel rate/mix, looping wave buffers;
+  clips are uploaded to `linearAlloc` memory and flushed with `DSP_FlushDataCache`.
+- Desktop: a silent null backend for now; miniaudio comes with the editor/preview.
 - `AudioSource` is a thin component over the raw API; scripts can call the device directly.
+- Azahar in this environment rejects `ndspInit()` without DSP system files (`0xD880A7FA`); playback is
+  verified on hardware.
 - Music streaming, ADPCM and DSP effects are later. MVP clips are short and fully resident.
 
 ## 10. Input and time
@@ -480,7 +488,7 @@ struct InputState {
 - The 3DS layer fills this from `hidKeysHeld/Down/Up`, `hidCircleRead`, `hidCstickRead`, `hidTouchRead`.
 - Desktop maps keyboard/gamepad to the same buttons; `raw_hid` stays 0.
 - Deadzones, repeat rates and buffering are project policy, not engine policy.
-- Time: `dt` clamped to 100 ms, `time_scale`, `frame_index`, fixed step 1/60 s, `elapsed`.
+- Time lives in `Runtime`: clamped `dt`, 60 Hz fixed accumulator, `time_scale`, pause.
 - Pause/sleep: `aptMainLoop()` + applet hooks on device; `glfwWaitEvents` when unfocused on desktop.
 
 ## 11. Platform layer

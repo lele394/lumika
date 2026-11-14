@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "assets": [
+    {
+      "guid": "2f0a3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "type": "mesh",
+      "path": "models/cube.cmesh"
+    },
+    {
+      "guid": "8b2c4d6e-1f3a-4b5c-9d7e-2a3b4c5d6e7f",
+      "type": "texture",
+      "path": "textures/checker.t3x"
+    },
+    {
+      "guid": "7a1b2c3d-4e5f-4a6b-8c9d-1e2f3a4b5c6d",
+      "type": "material",
+      "path": "materials/checker.mat.json"
+    },
+    {
+      "guid": "9c3d5e7f-2a4b-4c6d-8e9f-3a4b5c6d7e8f",
+      "type": "audio",
+      "path": "audio/beep.wav"
+    }
+  ]
+}

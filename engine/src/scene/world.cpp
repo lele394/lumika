@@ -1,8 +1,21 @@
 #include "e3d/scene/world.hpp"
 
 #include "e3d/core/guid.hpp"
+#include "e3d/script/script_component.hpp"
 
 #include <algorithm>
+
+namespace {
+
+void notify_destroy(e3d::Component* component) {
+    if (component == nullptr) return;
+    const e3d::ComponentDesc* descriptor = component->descriptor();
+    if (descriptor != nullptr && descriptor->kind == e3d::ComponentKind::Script) {
+        static_cast<e3d::ScriptComponent*>(component)->on_destroy();
+    }
+}
+
+} // namespace
 
 namespace e3d {
 
@@ -59,6 +72,7 @@ EntityId World::create_entity_with_guid(const Guid& guid, std::string_view name,
 void World::destroy_components(Entity& entity) {
     for (Component* component : entity.components) {
         if (component == nullptr) continue;
+        notify_destroy(component);
         const ComponentDesc* descriptor = component->descriptor();
         if (descriptor != nullptr && descriptor->destroy != nullptr) descriptor->destroy(component);
     }
@@ -191,6 +205,7 @@ void World::remove_component(Component* component) {
     if (it == components.end()) return;
 
     components.erase(it);
+    notify_destroy(component);
     const ComponentDesc* descriptor = component->descriptor();
     if (descriptor != nullptr && descriptor->destroy != nullptr) descriptor->destroy(component);
 }

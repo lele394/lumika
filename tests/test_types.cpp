@@ -18,4 +18,37 @@ std::span<const e3d::PropDesc> TestMover::properties() {
 
 E3D_IMPLEMENT_COMPONENT(TestMover)
 
-void register_test_components() { e3d::register_component(TestMover::static_descriptor()); }
+int LifecycleProbe::created = 0;
+int LifecycleProbe::started = 0;
+int LifecycleProbe::enabled_count = 0;
+int LifecycleProbe::disabled = 0;
+int LifecycleProbe::updates = 0;
+int LifecycleProbe::fixed_updates = 0;
+int LifecycleProbe::destroyed = 0;
+
+void LifecycleProbe::reset() {
+    created = 0;
+    started = 0;
+    enabled_count = 0;
+    disabled = 0;
+    updates = 0;
+    fixed_updates = 0;
+    destroyed = 0;
+}
+
+std::span<const e3d::PropDesc> LifecycleProbe::properties() { return {}; }
+
+void LifecycleProbe::on_create() { ++created; }
+void LifecycleProbe::on_start() { ++started; }
+void LifecycleProbe::on_enable() { ++enabled_count; }
+void LifecycleProbe::on_disable() { ++disabled; }
+void LifecycleProbe::on_update(float) { ++updates; }
+void LifecycleProbe::on_fixed_update(float) { ++fixed_updates; }
+void LifecycleProbe::on_destroy() { ++destroyed; }
+
+E3D_IMPLEMENT_COMPONENT(LifecycleProbe)
+
+void register_test_components() {
+    e3d::register_component(TestMover::static_descriptor());
+    e3d::register_component(LifecycleProbe::static_descriptor());
+}

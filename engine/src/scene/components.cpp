@@ -37,9 +37,19 @@ std::span<const PropDesc> MeshRenderer::properties() {
     return {props, std::size(props)};
 }
 
+std::span<const PropDesc> AudioSource::properties() {
+    static const PropDesc props[] = {
+        E3D_PROP(AudioSource, clip).asset_type("audio"),
+        E3D_PROP(AudioSource, volume).range(0.0f, 1.0f).step(0.01f),
+        E3D_PROP(AudioSource, loop),
+    };
+    return {props, std::size(props)};
+}
+
 E3D_IMPLEMENT_COMPONENT(Environment)
 E3D_IMPLEMENT_COMPONENT(Camera)
 E3D_IMPLEMENT_COMPONENT(MeshRenderer)
+E3D_IMPLEMENT_COMPONENT(AudioSource)
 
 void register_builtin_components() {
     static bool registered = false;
@@ -49,6 +59,7 @@ void register_builtin_components() {
     register_component(Environment::static_descriptor());
     register_component(Camera::static_descriptor());
     register_component(MeshRenderer::static_descriptor());
+    register_component(AudioSource::static_descriptor());
 }
 
 } // namespace e3d

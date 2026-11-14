@@ -83,37 +83,48 @@ done), dirty-subtree transform caching, and a non-linear GUID index. None are ne
 
 ## M2 — Renderer and asset pipeline
 
-**Status: core complete.** Rendering, textures, lighting, mesh conversion and RomFS loading are
-verified. Remaining: scene-driven asset resolution, 2D text, the debug overlay, the zero-allocation
-measurement and stereo.
-
-**Goal:** a scene file with meshes, materials and cameras renders correctly on the device.
+**Status: complete except 2D text.** Rendering, textures, lighting, mesh conversion, materials,
+manifest-based asset resolution and RomFS loading are verified. The scene JSON now drives meshes,
+materials and clear colour end to end.
 
 Tasks:
 
 - [x] Citro3D device: init/shutdown, both render targets, clear, depth, per-camera projection.
 - [x] Shader pipeline: `picasso` → DVLB → build-time embedded blob.
-- [x] `unlit_color` (tint) and `lit_textured` (per-face lighting + texture modulate).
-- [x] Mesh upload (`linearAlloc`, `GSPGPU_FlushDataCache`), generation-checked mesh/material/texture
-      handle pools, fixed 48-byte vertex format.
-- [x] `.t3x` textures through `Tex3DS_TextureImport`, filtering, texture binding.
-- [x] `meshc`: OBJ → `.cmesh`, AABB, u16 indices, validation; `tools/cook.ps1` regenerates cooked assets.
-- [x] RomFS packaging and runtime loading (`romfsInit`, `load_cmesh`, `create_texture`).
-- [x] Render list, `CameraDesc`, `MeshRenderer`, layer/cull-mask filtering, transform propagation.
-- [x] Dual-screen check: 2 cameras, 1 draw per camera, textured lit cube at 60 fps.
-- [ ] Material JSON + asset database: resolve `MeshRenderer` asset GUIDs from the scene to handles.
+- [x] `unlit_color` and `lit_textured` (per-face lighting + texture modulate).
+- [x] Mesh upload, generation-checked mesh/material/texture handle pools, 48-byte vertex format.
+- [x] `.t3x` textures, filtering, texture binding.
+- [x] `meshc` (OBJ → `.cmesh`), `tools/cook.ps1`, RomFS packaging.
+- [x] Render list, cameras, `MeshRenderer`, layer/cull-mask filtering, transform propagation.
+- [x] Material JSON and `AssetDb`/`AssetManager`; scene mesh/material GUIDs resolve to handles.
+- [x] Clean colour, mesh, material and texture all come from project data in `demo3d`.
 - [ ] `unlit_textured`, `lit_diffuse`, `sprite`, `text` shaders.
 - [ ] `tools/fontc` and the 2D sprite/text batcher.
-- [ ] Draw sorting/batching; dynamic VBO triple buffering for the board.
-- [ ] Debug overlay: frame time, draw calls, triangles, heap high-water.
-- [ ] Zero-allocation measurement across a 600-frame run.
+- [ ] Draw sorting/batching; dynamic VBO triple buffering.
+- [ ] Debug overlay and zero-allocation measurement.
 - [ ] Optional: stereo camera path behind a flag.
 
-**Incremental acceptance (met):** `render_check.3dsx` loads its mesh and texture from RomFS, renders
-a lit textured cube on both cameras (1 draw each), 120 frames in 2004 ms (16.7 ms/frame).
+## M3 — Scripts, input, time, audio
 
-**Final acceptance:** the same cube rendered from a project scene JSON (clear colour, mesh and
-material references), plus the debug overlay and zero-allocation measurement.
+**Status: complete except audio playback verification.** Azahar's NDSP init fails without DSP system
+files; the WAV path and backend are implemented and will be checked on hardware.
+
+**Goal:** project code drives the engine; the engine stops being a scene viewer.
+
+Tasks:
+
+- [x] `ScriptComponent` lifecycle and deterministic dispatch; enable/disable; destroy hook.
+- [x] Script properties serialize and load exactly like built-in components.
+- [x] `InputState`: buttons, circle pad, C-stick, touch, `raw_hid`; 3DS mapping.
+- [x] Time: clamped `dt`, 60 Hz accumulator, `time_scale`, pause.
+- [x] `AudioDevice`: NDSP backend (8 voices, PCM16), WAV parsing, play/stop/loop/volume/pan/rate.
+- [x] Script context: `world()`, `input()`, `audio()`, `render_list()`.
+- [x] `AudioSource` component and audio asset resolution through the manifest.
+- [ ] Raw draw API for project-generated geometry (escape hatch).
+- [ ] Desktop audio backend and desktop input mapping.
+
+**Acceptance:** three scripts run in a deterministic order; a script reads input and plays a sound; the
+project scene drives rotation; pausing stops simulation. Audio playback remains hardware-verified.
 
 **Risk checkpoint:** if shader work overruns, cut to `unlit_textured` + `sprite` and defer lighting to
 M3. Do not cut the asset pipeline — it is on the critical path for the demo.
@@ -139,16 +150,18 @@ audio; no allocation in `on_update` for the demo scripts.
 
 ## M4 — Dual-screen 3D smoke demo
 
-**Goal:** the smallest thing that proves the renderer and script layer together, before any game rules.
+**Status: technical demo running (`demo3d`).** Two scene-driven textured cubes spin from project
+scripts on independent cameras; Select pauses, Start exits. Remaining: axis-flip input and overlay.
 
-- Two cameras, one per screen, independently configured (FOV, position, clear colour).
-- Two triangle meshes (or one mesh, two instances) spinning at different speeds and opposite directions.
-- Rotation driven by scripts, not by hard-coded C++ in `main`, so the lifecycle path is exercised.
-- Input: pause/resume and axis flips, to prove input reaches scripts.
-- Debug overlay: frame time, draw calls, triangles.
+- [x] Two cameras, one per screen, independently configured.
+- [x] Two meshes spinning at different speeds and directions.
+- [x] Rotation driven by script components loaded from the scene.
+- [x] Pause/resume through input.
+- [ ] Axis-flip controls.
+- [ ] Debug overlay: frame time, draw calls, triangles.
 
-**Acceptance:** both screens show independent 3D motion at 60 fps; pausing freezes both; no per-frame
-heap allocations; runs from the packaged project scene, not from a special-case binary.
+**Acceptance:** both screens show independent 3D motion at 60 fps; pausing freezes both; the scene is
+loaded from project data, not hard-coded. (Met except the overlay and axis flips.)
 
 ## M5 — Tetris demo
 
