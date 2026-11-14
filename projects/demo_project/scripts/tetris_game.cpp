@@ -196,6 +196,10 @@ void TetrisGame::lock_piece() {
     clear_lines();
     if (!spawn()) game_over = true;
     ++revision;
+
+    if (clip_lock.valid()) {
+        e3d::audio().play(clip_lock, e3d::PlayParams{0.55f, 0.0f, 1.0f, false});
+    }
 }
 
 void TetrisGame::clear_lines() {

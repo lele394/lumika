@@ -56,7 +56,7 @@ int main() {
     register_project_components();
 
     std::unique_ptr<AudioDevice> audio = create_audio_device_3ds();
-    audio->init();
+    const bool audio_ready = audio->init();
 
     std::unique_ptr<RenderDevice> render = create_render_device_3ds();
     if (!render->init()) {
@@ -117,10 +117,19 @@ int main() {
     const EntityId root = world.root();
     TetrisGame* game = root != kInvalidEntity ? world.find_component<TetrisGame>(root) : nullptr;
 
+    ClipHandle beep_clip;
+    {
+        Guid beep_guid;
+        guid_from_string("9c3d5e7f-2a4b-4c6d-8e9f-3a4b5c6d7e8f", beep_guid);
+        beep_clip = assets.audio_clip(beep_guid, error);
+    }
+    if (game != nullptr) game->clip_lock = beep_clip;
+
+    bool report_written = false;
+
     u32 frames = 0;
     u64 last_ms = osGetTime();
     const u64 start_ms = last_ms;
-    bool report_written = false;
 
     while (aptMainLoop() && frames < 3600) {
         hidScanInput();
@@ -201,7 +210,10 @@ int main() {
                           "cam_top=%u\n"
                           "cam_bottom=%u\n"
                           "board_vertices=%d\n"
-                          "board_update_ok=%d\n",
+                          "board_update_ok=%d\n"
+                          "audio_device=%d\n"
+                          "audio_clip=%d\n"
+                          "audio_result=0x%08lx\n",
                           loaded.ok ? "ok" : "failed",
                           static_cast<unsigned>(loaded.warnings.size() + warnings.size()),
                           count_scripts(world), manifest_ok ? 1 : 0, font.texture.valid() ? 1 : 0,
@@ -218,7 +230,9 @@ int main() {
                           static_cast<unsigned>(list.draws().size()), camera_draws[0],
                           camera_draws[1], cam_top, cam_bottom,
                           board_view != nullptr ? board_view->mesh_vertices : -1,
-                          board_view != nullptr && board_view->update_ok ? 1 : 0);
+                          board_view != nullptr && board_view->update_ok ? 1 : 0,
+                          audio_ready ? 1 : 0, beep_clip.valid() ? 1 : 0,
+                          static_cast<unsigned long>(audio_device_3ds_last_result()));
             write_report(report);
             report_written = true;
         }

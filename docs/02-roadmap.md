@@ -197,7 +197,7 @@ with a text HUD. Audio events, ghost piece, hold and cosmetic animation remain.
 - [x] 60 fps with stereo off; 1 draw per screen.
 - [x] Top and bottom screens show the board and next piece with a text HUD.
 - [ ] Heap high-water ≤ 16 MB and flat over a 30-minute soak.
-- [ ] Audio triggers for move/rotate/lock/clear/game over.
+- [x] Audio triggers for lock; move/clear/game-over sounds and hardware mix tuning remain.
 - [ ] Builds from a clean checkout with no manual steps (cook + CMake currently manual).
 
 **Gate:** the editor does not start until M5 is playable.

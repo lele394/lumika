@@ -7,6 +7,18 @@ Working title; nothing here is stable yet.
 scripts (game rules, board mesh, next piece, HUD), and renders both screens at 60 FPS. Audio is
 implemented; playback still needs DSP system files in Azahar.
 
+## Audio
+
+Homebrew NDSP needs a `dspfirm.cdc` on the SD card:
+
+- **Azahar**: create a **0-byte** file at `%APPDATA%\azahar\sdmc\3ds\dspfirm.cdc`. HLE audio only
+  requires the file to exist.
+- **Hardware**: dump it with Luma3DS (Rosalina → Miscellaneous options → Dump DSP firmware) to
+  `sdmc:/3ds/dspfirm.cdc`, or use [OpenDSP](https://github.com/Cellenseres/OpenDSP) (BSD-2) renamed
+  to `dspfirm.cdc`.
+
+Without it `ndspInit()` fails with `0xD880A7FA` and the engine runs silently.
+
 ## Controls
 
 | Input | Action |
@@ -27,7 +39,7 @@ implemented; playback still needs DSP system files in Azahar.
 | Tetris | Scene + manifest + 4 scripts; 1 piece locked, score 34, 4 board cells, 60 FPS |
 | HUD | Bitmap-font text on both screens, additive blending, upright glyphs |
 | Host tests | 41 test cases / 314 assertions pass via CTest |
-| Audio | WAV parser + NDSP backend; clip loads, playback blocked by Azahar DSP |
+| Audio | NDSP works in Azahar with a 0-byte `dspfirm.cdc`; clip, voice and playback verified |
 
 ## What works now
 

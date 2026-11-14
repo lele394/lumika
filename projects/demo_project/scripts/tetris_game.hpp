@@ -29,6 +29,9 @@ public:
     int piece_x = 3;
     int piece_y = 0;
 
+    // Runtime audio handles, assigned by the application.
+    e3d::ClipHandle clip_lock;
+
     static std::span<const e3d::PropDesc> properties();
 
     void on_create() override;
