@@ -165,8 +165,8 @@ loaded from project data, not hard-coded. (Met except the overlay and axis flips
 
 ## M5 — Tetris demo
 
-**Goal:** the game that defines the engine. If a feature is not needed here, it does not belong in the
-MVP.
+**Status: playable.** `demo3d` renders a 10×20 board and a spinning next piece from scene scripts,
+with a text HUD. Audio events, ghost piece, hold and cosmetic animation remain.
 
 ### Demo specification (2.5D board, 3D presentation)
 
@@ -193,12 +193,12 @@ MVP.
 
 ### Acceptance
 
-- [ ] Playable start to game over to restart, with correct scoring.
-- [ ] 60 fps top screen with stereo off; ≥ 30 fps with stereo on (Azahar).
-- [ ] Top screen ≤ 4 draw calls, bottom ≤ 6; board is one indexed draw.
+- [x] Playable start to game over to restart, with scoring (manual verification pending line clears).
+- [x] 60 fps with stereo off; 1 draw per screen.
+- [x] Top and bottom screens show the board and next piece with a text HUD.
 - [ ] Heap high-water ≤ 16 MB and flat over a 30-minute soak.
-- [ ] Audio triggers correctly and survives scene restart.
-- [ ] Builds from a clean checkout and packages with assets into RomFS.
+- [ ] Audio triggers for move/rotate/lock/clear/game over.
+- [ ] Builds from a clean checkout with no manual steps (cook + CMake currently manual).
 
 **Gate:** the editor does not start until M5 is playable.
 

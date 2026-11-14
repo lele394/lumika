@@ -3,7 +3,6 @@
 #include "e3d/audio/audio.hpp"
 #include "e3d/input/input.hpp"
 #include "e3d/render/render_list.hpp"
-#include "e3d/scene/world.hpp"
 #include "e3d/script/script_context.hpp"
 #include "e3d/script/script_system.hpp"
 
@@ -23,6 +22,7 @@ void Runtime::update(const InputState& input_state, float raw_delta_time) {
     context.input = &input_state;
     context.audio = audio_;
     context.render_list = render_list_;
+    context.render_device = render_device_;
     context.delta_time = delta_time;
     context.fixed_delta_time = fixed_delta_time_;
 

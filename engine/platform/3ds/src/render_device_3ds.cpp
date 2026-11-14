@@ -11,6 +11,7 @@
 
 #include "lit_textured_shbin_data.h"
 #include "unlit_color_shbin_data.h"
+#include "unlit_textured_shbin_data.h"
 
 namespace {
 
@@ -44,6 +45,8 @@ struct GpuMesh final {
     void* vertices = nullptr;
     void* indices = nullptr;
     u32 index_count = 0;
+    u32 vertex_capacity = 0;
+    u32 index_capacity = 0;
 };
 
 struct GpuTexture final {
@@ -108,6 +111,14 @@ public:
                           e3d::ShaderId::LitTextured)) {
             return false;
         }
+        if (!load_program(textured_, unlit_textured_shbin, unlit_textured_shbin_size,
+                          e3d::ShaderId::UnlitTextured)) {
+            return false;
+        }
+
+        sprite_capacity_bytes_ = 256 * 1024;
+        sprite_buffer_ = linearAlloc(sprite_capacity_bytes_);
+        if (sprite_buffer_ == nullptr) return false;
 
         C3D_AttrInfo* attributes = C3D_GetAttrInfo();
         AttrInfo_Init(attributes);
@@ -141,12 +152,17 @@ public:
             }
         });
 
-        for (GpuProgram* program : {&unlit_, &lit_}) {
+        for (GpuProgram* program : {&unlit_, &lit_, &textured_}) {
             if (program->dvlb != nullptr) {
                 shaderProgramFree(&program->program);
                 DVLB_Free(program->dvlb);
                 program->dvlb = nullptr;
             }
+        }
+
+        if (sprite_buffer_ != nullptr) {
+            linearFree(sprite_buffer_);
+            sprite_buffer_ = nullptr;
         }
 
         if (top_ != nullptr) {
@@ -185,7 +201,44 @@ public:
         mesh.vertices = vertices;
         mesh.indices = indices;
         mesh.index_count = static_cast<u32>(data.indices.size());
+        mesh.vertex_capacity = static_cast<u32>(vertex_bytes);
+        mesh.index_capacity = static_cast<u32>(index_bytes);
         return meshes_.add(mesh);
+    }
+
+    bool update_mesh(e3d::MeshHandle handle, const e3d::MeshData& data) override {
+        GpuMesh* mesh = meshes_.get(handle);
+        if (mesh == nullptr || data.vertices.empty() || data.indices.empty()) return false;
+
+        const std::size_t vertex_bytes = data.vertices.size() * sizeof(e3d::MeshVertex);
+        const std::size_t index_bytes = data.indices.size() * sizeof(u16);
+
+        if (vertex_bytes > mesh->vertex_capacity) {
+            if (mesh->vertices != nullptr) linearFree(mesh->vertices);
+            mesh->vertices = linearAlloc(vertex_bytes);
+            if (mesh->vertices == nullptr) {
+                mesh->vertex_capacity = 0;
+                return false;
+            }
+            mesh->vertex_capacity = static_cast<u32>(vertex_bytes);
+        }
+
+        if (index_bytes > mesh->index_capacity) {
+            if (mesh->indices != nullptr) linearFree(mesh->indices);
+            mesh->indices = linearAlloc(index_bytes);
+            if (mesh->indices == nullptr) {
+                mesh->index_capacity = 0;
+                return false;
+            }
+            mesh->index_capacity = static_cast<u32>(index_bytes);
+        }
+
+        std::memcpy(mesh->vertices, data.vertices.data(), vertex_bytes);
+        std::memcpy(mesh->indices, data.indices.data(), index_bytes);
+        GSPGPU_FlushDataCache(mesh->vertices, static_cast<u32>(vertex_bytes));
+        GSPGPU_FlushDataCache(mesh->indices, static_cast<u32>(index_bytes));
+        mesh->index_count = static_cast<u32>(data.indices.size());
+        return true;
     }
 
     void destroy_mesh(e3d::MeshHandle handle) override {
@@ -232,6 +285,8 @@ public:
         if (!initialized_) return;
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+        C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
+        C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
         active_ = nullptr;
 
         for (std::size_t camera_index = 0; camera_index < list.cameras().size(); ++camera_index) {
@@ -310,7 +365,110 @@ public:
             }
         }
 
+        draw_sprites(list, e3d::Screen::Top, 400.0f, 240.0f);
+        draw_sprites(list, e3d::Screen::Bottom, 320.0f, 240.0f);
+
         C3D_FrameEnd(0);
+    }
+
+private:
+    void draw_sprites(const e3d::RenderList& list, e3d::Screen screen, float width, float height) {
+        bool any = false;
+        for (const e3d::SpriteItem& sprite : list.sprites()) {
+            if (sprite.screen == screen) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) return;
+
+        C3D_RenderTarget* target = screen == e3d::Screen::Top ? top_ : bottom_;
+        C3D_FrameDrawOn(target);
+        C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_ALL);
+        // Text/UI is composited additively: the atlas is black-backed, so black
+        // pixels are a no-op without needing a working alpha channel.
+        C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ONE, GPU_ONE);
+
+        if (active_ != &textured_) {
+            C3D_BindProgram(&textured_.program);
+            configure_tev(e3d::ShaderId::UnlitTextured);
+            active_ = &textured_;
+        }
+
+        C3D_Mtx ortho;
+        Mtx_OrthoTilt(&ortho, 0.0f, width, height, 0.0f, -1.0f, 1.0f, true);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, textured_.mvp, &ortho);
+        if (textured_.tint >= 0) {
+            C3D_FVUnifSet(GPU_VERTEX_SHADER, textured_.tint, 1.0f, 1.0f, 1.0f, 1.0f);
+        }
+
+        auto* vertices = static_cast<e3d::MeshVertex*>(sprite_buffer_);
+        const u32 capacity = sprite_capacity_bytes_ / sizeof(e3d::MeshVertex);
+
+        struct Batch final {
+            e3d::TextureHandle texture;
+            u32 first = 0;
+            u32 count = 0;
+        };
+        Batch batches[64];
+        u32 batch_count = 0;
+        u32 vertex_count = 0;
+
+        for (const e3d::SpriteItem& sprite : list.sprites()) {
+            if (sprite.screen != screen) continue;
+            if (vertex_count + 6 > capacity || batch_count >= 64) break;
+
+            if (batch_count == 0 ||
+                !(batches[batch_count - 1].texture == sprite.texture)) {
+                batches[batch_count].texture = sprite.texture;
+                batches[batch_count].first = vertex_count;
+                batches[batch_count].count = 0;
+                ++batch_count;
+            }
+
+            const float x0 = sprite.x;
+            const float y0 = sprite.y;
+            const float x1 = sprite.x + sprite.width;
+            const float y1 = sprite.y + sprite.height;
+
+            const e3d::Vec3 normal{0.0f, 0.0f, 1.0f};
+            const e3d::MeshVertex v0{e3d::Vec3{x0, y0, 0.0f}, sprite.color,
+                                     e3d::Vec2{sprite.u0, sprite.v0}, normal};
+            const e3d::MeshVertex v1{e3d::Vec3{x1, y0, 0.0f}, sprite.color,
+                                     e3d::Vec2{sprite.u1, sprite.v0}, normal};
+            const e3d::MeshVertex v2{e3d::Vec3{x1, y1, 0.0f}, sprite.color,
+                                     e3d::Vec2{sprite.u1, sprite.v1}, normal};
+            const e3d::MeshVertex v3{e3d::Vec3{x0, y1, 0.0f}, sprite.color,
+                                     e3d::Vec2{sprite.u0, sprite.v1}, normal};
+
+            vertices[vertex_count++] = v0;
+            vertices[vertex_count++] = v1;
+            vertices[vertex_count++] = v2;
+            vertices[vertex_count++] = v0;
+            vertices[vertex_count++] = v2;
+            vertices[vertex_count++] = v3;
+
+            batches[batch_count - 1].count += 6;
+        }
+
+        if (vertex_count == 0) return;
+
+        GSPGPU_FlushDataCache(sprite_buffer_,
+                              static_cast<u32>(vertex_count * sizeof(e3d::MeshVertex)));
+
+        C3D_BufInfo* buffers = C3D_GetBufInfo();
+        BufInfo_Init(buffers);
+        BufInfo_Add(buffers, sprite_buffer_, sizeof(e3d::MeshVertex), 4, 0x3210);
+
+        for (u32 i = 0; i < batch_count; ++i) {
+            GpuTexture* texture = textures_.get(batches[i].texture);
+            if (texture == nullptr || !texture->valid) continue;
+            C3D_TexBind(0, &texture->texture);
+            C3D_DrawArrays(GPU_TRIANGLES, static_cast<int>(batches[i].first),
+                           static_cast<int>(batches[i].count));
+        }
+
+        C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
     }
 
 private:
@@ -318,7 +476,7 @@ private:
         C3D_TexEnv* environment = C3D_GetTexEnv(0);
         C3D_TexEnvInit(environment);
 
-        if (shader == e3d::ShaderId::LitTextured) {
+        if (shader == e3d::ShaderId::LitTextured || shader == e3d::ShaderId::UnlitTextured) {
             C3D_TexEnvSrc(environment, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR,
                           GPU_PRIMARY_COLOR);
             C3D_TexEnvFunc(environment, C3D_Both, GPU_MODULATE);
@@ -334,7 +492,10 @@ private:
     C3D_RenderTarget* bottom_ = nullptr;
     GpuProgram unlit_;
     GpuProgram lit_;
+    GpuProgram textured_;
     GpuProgram* active_ = nullptr;
+    void* sprite_buffer_ = nullptr;
+    u32 sprite_capacity_bytes_ = 0;
     e3d::HandlePool<e3d::MeshTag, GpuMesh> meshes_;
     e3d::HandlePool<e3d::MaterialTag, GpuMaterial> materials_;
     e3d::HandlePool<e3d::TextureTag, GpuTexture> textures_;

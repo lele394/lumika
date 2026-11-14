@@ -26,6 +26,10 @@ if(NINTENDO_3DS)
     src/demo_3ds.cpp
     scripts/spin.cpp
     scripts/play_sound.cpp
+    scripts/tetris_game.cpp
+    scripts/board_view.cpp
+    scripts/next_piece.cpp
+    scripts/tetris_hud.cpp
     scripts/register.cpp
   )
   target_include_directories(demo3d PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/scripts)

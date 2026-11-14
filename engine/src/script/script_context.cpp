@@ -3,6 +3,7 @@
 #include "e3d/audio/audio.hpp"
 #include "e3d/core/log.hpp"
 #include "e3d/input/input.hpp"
+#include "e3d/render/render_device.hpp"
 #include "e3d/render/render_list.hpp"
 #include "e3d/scene/world.hpp"
 
@@ -32,6 +33,11 @@ AudioDevice& audio() {
 RenderList& render_list() {
     E3D_ASSERT(script_context().render_list != nullptr);
     return *script_context().render_list;
+}
+
+RenderDevice& render_device() {
+    E3D_ASSERT(script_context().render_device != nullptr);
+    return *script_context().render_device;
 }
 
 } // namespace e3d

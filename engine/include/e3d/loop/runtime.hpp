@@ -7,6 +7,7 @@ namespace e3d {
 class World;
 class AudioDevice;
 class RenderList;
+class RenderDevice;
 struct InputState;
 
 /// Owns time, fixed-step scheduling and script dispatch. The app calls update()
@@ -16,6 +17,7 @@ public:
     Runtime(World& world, AudioDevice* audio);
 
     void set_render_list(RenderList* list) noexcept { render_list_ = list; }
+    void set_render_device(RenderDevice* device) noexcept { render_device_ = device; }
 
     void update(const InputState& input, float raw_delta_time);
 
@@ -33,6 +35,7 @@ private:
     World& world_;
     AudioDevice* audio_;
     RenderList* render_list_ = nullptr;
+    RenderDevice* render_device_ = nullptr;
     float fixed_delta_time_ = 1.0f / 60.0f;
     float accumulator_ = 0.0f;
     float time_scale_ = 1.0f;

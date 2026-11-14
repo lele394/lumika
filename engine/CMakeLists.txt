@@ -14,6 +14,7 @@ add_library(e3d_core STATIC
   src/reflect/registry.cpp
   src/render/render_list.cpp
   src/render/renderer.cpp
+  src/render/text.cpp
   src/scene/components.cpp
   src/scene/prop_io.cpp
   src/scene/scene_io.cpp

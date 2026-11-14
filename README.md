@@ -3,22 +3,31 @@
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
-**Status: M3 complete except audio playback verification.** The demo project now loads
-`main.scene.json`, resolves mesh/material/audio assets through a cooked manifest, runs C++ script
-components (two spinning cubes), and drives both screens at 60 FPS. NDSP is implemented; Azahar
-rejects `ndspInit()` without DSP system files (`0xD880A7FA`), so audio playback needs hardware.
+**Status: playable Tetris demo.** `demo3d` loads the project scene, resolves cooked assets, runs four
+scripts (game rules, board mesh, next piece, HUD), and renders both screens at 60 FPS. Audio is
+implemented; playback still needs DSP system files in Azahar.
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| D-pad / Circle Pad | Move |
+| Down | Soft drop |
+| Up | Hard drop |
+| A / B | Rotate clockwise / counter-clockwise |
+| Start | Pause |
+| Select | Quit |
 
 ## Verified so far
 
 | Check | Result |
 | --- | --- |
 | 3DS build | `tetris3d`, `scene_check`, `render_check`, `demo3d` via devkitARM r68, libctru 2.7.1 |
-| 3DS run | Citro2D smoke app on both screens at 60 FPS; `scene_check` reports `roundtrip=identical` |
-| Dual-screen 3D | Two cameras, 1 draw per screen, 16.6 ms/frame; both screens confirmed |
-| Textured lit 3D | Cooked `.cmesh` + `.t3x`, per-face lighting, 60 FPS |
-| Scene-driven demo | Manifest + material JSON + 3 scripts; 109.8° scripted rotation; 0 warnings |
+| 3DS run | Citro2D smoke app; `scene_check` round-trips scenes; `render_check` lit textured cube |
+| Tetris | Scene + manifest + 4 scripts; 1 piece locked, score 34, 4 board cells, 60 FPS |
+| HUD | Bitmap-font text on both screens, additive blending, upright glyphs |
 | Host tests | 41 test cases / 314 assertions pass via CTest |
-| Audio | WAV parser and NDSP backend implemented; clip loads, playback blocked by Azahar DSP |
+| Audio | WAV parser + NDSP backend; clip loads, playback blocked by Azahar DSP |
 
 ## What works now
 
@@ -30,9 +39,11 @@ rejects `ndspInit()` without DSP system files (`0xD880A7FA`), so audio playback 
 - Asset pipeline: `meshc` (OBJ → `.cmesh`), `tex3ds` (PNG → `.t3x`), manifest, material JSON, RomFS.
 - Renderer: render list, Citro3D device, two targets, per-camera perspective, depth, layer masks,
   `unlit_color` and `lit_textured` shaders, textures, mesh upload with handle pools.
-- Runtime: script lifecycle (`on_create/start/enable/update/fixed/disable/destroy`), fixed 60 Hz step,
-  portable input state, audio API, deterministic dispatch order.
+- Runtime: script lifecycle, fixed 60 Hz step, portable input state, audio API, deterministic dispatch.
 - Project scripts are plain C++ components compiled into the game; the scene references them by type.
+- 2D HUD: bitmap font atlas, `draw_text`, per-screen sprite batching with additive blending.
+- Tetris: 7-bag, rotation with kicks, DAS, soft/hard drop, lock delay, line clears, scoring, pause and
+  restart; board and next piece are dynamic meshes; HUD shows score, level and lines.
 
 ## Layout
 
@@ -42,7 +53,7 @@ rejects `ndspInit()` without DSP system files (`0xD880A7FA`), so audio playback 
 | `engine/platform/3ds/` | Citro3D device, NDSP audio, HID, RomFS | M3 |
 | `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned |
 | `editor/` | Dear ImGui editor | planned (M6) |
-| `projects/demo_project/` | Scene, assets, scripts, demo apps | M3 |
+| `projects/demo_project/` | Scene, assets, scripts, playable Tetris demo | M5 |
 | `tools/` | `scene_dump`, `meshc`, `cook.ps1`, build/run scripts | M2 |
 | `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M1 |
 | `tests/` | Host-side unit tests | M1 |
@@ -80,6 +91,10 @@ Inspect or round-trip a scene on the host:
 ```powershell
 .\build\desktop\tools\scene_dump.exe .\projects\demo_project\scenes\main.scene.json out.json
 ```
+
+Note: the RomFS staging is copied at configure time. After changing cooked assets, run
+`tools\cook.ps1` and re-run the build; if a `.3dsx` still embeds the old assets, delete it or clean
+`build/3ds`.
 
 ## Toolchain (installed locally, no admin)
 

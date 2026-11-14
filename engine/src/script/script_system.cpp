@@ -1,6 +1,7 @@
 #include "e3d/script/script_system.hpp"
 
 #include "e3d/reflect/registry.hpp"
+#include "e3d/render/render_list.hpp"
 #include "e3d/scene/world.hpp"
 #include "e3d/script/script_component.hpp"
 
@@ -67,6 +68,14 @@ void fixed_update_scripts(World& world, float fixed_delta_time) {
         if (!script.enabled) return;
         ensure_started(script);
         script.on_fixed_update(fixed_delta_time);
+    });
+}
+
+void render_scripts(World& world, RenderList& list) {
+    for_each_script(world, [&list](ScriptComponent& script) {
+        if (!script.enabled) return;
+        ensure_started(script);
+        script.on_render(list);
     });
 }
 

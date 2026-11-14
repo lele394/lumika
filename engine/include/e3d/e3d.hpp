@@ -23,6 +23,7 @@
 #include "e3d/reflect/registry.hpp"
 #include "e3d/render/render_list.hpp"
 #include "e3d/render/renderer.hpp"
+#include "e3d/render/text.hpp"
 #include "e3d/render/types.hpp"
 #include "e3d/scene/components.hpp"
 #include "e3d/scene/scene_io.hpp"

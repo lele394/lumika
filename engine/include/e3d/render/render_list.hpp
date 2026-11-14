@@ -40,13 +40,16 @@ public:
     void clear();
     u8 add_camera(const CameraDesc& camera);
     void draw(u8 camera, MeshHandle mesh, MaterialHandle material, const Mat4& model);
+    void draw_sprite(const SpriteItem& sprite);
 
     [[nodiscard]] const std::vector<CameraDesc>& cameras() const noexcept { return cameras_; }
     [[nodiscard]] const std::vector<DrawItem>& draws() const noexcept { return draws_; }
+    [[nodiscard]] const std::vector<SpriteItem>& sprites() const noexcept { return sprites_; }
 
 private:
     std::vector<CameraDesc> cameras_;
     std::vector<DrawItem> draws_;
+    std::vector<SpriteItem> sprites_;
 };
 
 } // namespace e3d

@@ -14,6 +14,7 @@ public:
     virtual void shutdown() = 0;
 
     virtual MeshHandle create_mesh(const MeshData& mesh) = 0;
+    virtual bool update_mesh(MeshHandle mesh, const MeshData& data) = 0;
     virtual void destroy_mesh(MeshHandle mesh) = 0;
 
     virtual MaterialHandle create_material(const MaterialDesc& material) = 0;

@@ -10,7 +10,7 @@ namespace e3d {
 
 enum class Screen : u8 { Top, Bottom };
 
-enum class ShaderId : u8 { UnlitColor, LitTextured };
+enum class ShaderId : u8 { UnlitColor, LitTextured, UnlitTextured };
 
 struct MeshTag;
 struct MaterialTag;
@@ -49,6 +49,22 @@ struct MaterialDesc final {
     float diffuse = 0.75f;
     Vec3 light_direction{-0.45f, 0.75f, 0.5f};
     TextureHandle texture;
+};
+
+/// Screen-space quad for text and UI, drawn after the 3D pass. Coordinates are
+/// pixels with the origin at the top-left of the target.
+struct SpriteItem final {
+    Screen screen = Screen::Top;
+    TextureHandle texture;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    float u0 = 0.0f;
+    float v0 = 0.0f;
+    float u1 = 1.0f;
+    float v1 = 1.0f;
+    Color color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 } // namespace e3d

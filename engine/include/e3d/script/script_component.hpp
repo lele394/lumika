@@ -4,6 +4,8 @@
 
 namespace e3d {
 
+class RenderList;
+
 /// Base class for project-defined behaviour components.
 class ScriptComponent : public Component {
 public:
@@ -15,6 +17,7 @@ public:
     virtual void on_fixed_update(float /*fixed_delta_time*/) {}
     virtual void on_disable() {}
     virtual void on_destroy() {}
+    virtual void on_render(RenderList& /*list*/) {}
 
     bool created = false;
     bool started = false;

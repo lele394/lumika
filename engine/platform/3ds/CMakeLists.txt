@@ -26,7 +26,7 @@ find_program(E3D_PICASSO picasso HINTS "${DEVKITPRO}/tools/bin" REQUIRED)
 set(E3D_SHADER_OUT ${CMAKE_CURRENT_BINARY_DIR}/generated)
 set(E3D_SHADER_OUTPUTS "")
 
-foreach(SHADER unlit_color lit_textured)
+foreach(SHADER unlit_color lit_textured unlit_textured)
   set(E3D_SHADER_SRC ${PROJECT_SOURCE_DIR}/engine/render/shaders/${SHADER}.v.pica)
   set(E3D_SHADER_BIN ${E3D_SHADER_OUT}/${SHADER}.shbin)
   set(E3D_SHADER_UNIFORMS ${E3D_SHADER_OUT}/${SHADER}_uniforms.h)

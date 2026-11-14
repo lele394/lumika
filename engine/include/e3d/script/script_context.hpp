@@ -7,6 +7,7 @@ namespace e3d {
 class World;
 class AudioDevice;
 class RenderList;
+class RenderDevice;
 struct InputState;
 
 /// Per-frame services exposed to scripts. Set by the runtime; scripts should use
@@ -16,6 +17,7 @@ struct ScriptContext final {
     const InputState* input = nullptr;
     AudioDevice* audio = nullptr;
     RenderList* render_list = nullptr;
+    RenderDevice* render_device = nullptr;
     float delta_time = 0.0f;
     float fixed_delta_time = 1.0f / 60.0f;
 };
@@ -26,5 +28,6 @@ World& world();
 const InputState& input();
 AudioDevice& audio();
 RenderList& render_list();
+RenderDevice& render_device();
 
 } // namespace e3d
