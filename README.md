@@ -3,9 +3,19 @@
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
-**Status: playable Tetris demo.** `demo3d` loads the project scene, resolves cooked assets, runs four
-scripts (game rules, board mesh, next piece, HUD), and renders both screens at 60 FPS. Audio is
-implemented; playback still needs DSP system files in Azahar.
+**Status: editor MVP running.** The Tetris demo is playable and the desktop ImGui editor can open the
+project, browse the tagged asset index, edit the hierarchy, inspect components, create/instantiate
+prefabs, save the scene, and build/launch Azahar.
+
+## Editor
+
+```powershell
+.\tools\build.ps1 -Target desktop
+.\build\desktop\editor\lumika_editor.exe
+```
+
+Panels: Hierarchy, Inspector, tagged/fuzzy-search Asset index, Console. `Build → Playtest` compiles
+the 3DS target and launches Azahar. See `docs/10-getting-started.md` §4b.
 
 ## Audio
 
@@ -64,7 +74,7 @@ Without it `ndspInit()` fails with `0xD880A7FA` and the engine runs silently.
 | `engine/` | Core: scene, reflection, assets, render list, runtime, audio API | M3 |
 | `engine/platform/3ds/` | Citro3D device, NDSP audio, HID, RomFS | M3 |
 | `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned |
-| `editor/` | Dear ImGui editor | planned (M6) |
+| `editor/` | Dear ImGui desktop editor | M6 MVP |
 | `projects/demo_project/` | Scene, assets, scripts, playable Tetris demo | M5 |
 | `tools/` | `scene_dump`, `meshc`, `cook.ps1`, build/run scripts | M2 |
 | `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M1 |

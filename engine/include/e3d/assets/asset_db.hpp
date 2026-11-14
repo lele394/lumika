@@ -8,12 +8,13 @@
 
 namespace e3d {
 
-enum class AssetType : u8 { Unknown, Mesh, Texture, Material, Audio, Font };
+enum class AssetType : u8 { Unknown, Mesh, Texture, Material, Audio, Font, Prefab };
 
 struct AssetEntry final {
     Guid guid;
     AssetType type = AssetType::Unknown;
     std::string path;
+    std::vector<std::string> tags;
 };
 
 /// Maps stable asset GUIDs (used by scenes and materials) to cooked files.

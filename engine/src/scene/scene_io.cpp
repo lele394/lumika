@@ -293,6 +293,50 @@ json::Value write_node(const World& world, const Entity& entity) {
     return node;
 }
 
+void regenerate_guids(json::Value& node, std::vector<std::pair<Guid, Guid>>& map) {
+    if (!node.is_object()) return;
+
+    if (json::Value* guid_value = node.find("guid"); guid_value != nullptr &&
+                                                     guid_value->is_string()) {
+        Guid old_guid;
+        if (guid_from_string(guid_value->as_string(), old_guid)) {
+            const Guid fresh = generate_guid();
+            map.push_back({old_guid, fresh});
+            *guid_value = json::Value::string(guid_to_string(fresh));
+        }
+    }
+
+    if (json::Value* children = node.find("children"); children != nullptr &&
+                                                      children->is_array()) {
+        for (std::size_t i = 0; i < children->size(); ++i) {
+            regenerate_guids((*children)[i], map);
+        }
+    }
+}
+
+void remap_entity_refs(json::Value& value, const std::vector<std::pair<Guid, Guid>>& map) {
+    if (value.is_object()) {
+        if (json::Value* ref = value.find("$entity"); ref != nullptr && ref->is_string()) {
+            Guid old_guid;
+            if (guid_from_string(ref->as_string(), old_guid)) {
+                for (const auto& entry : map) {
+                    if (entry.first == old_guid) {
+                        *ref = json::Value::string(guid_to_string(entry.second));
+                        break;
+                    }
+                }
+            }
+        }
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            remap_entity_refs(value.value_at(i), map);
+        }
+    } else if (value.is_array()) {
+        for (std::size_t i = 0; i < value.size(); ++i) {
+            remap_entity_refs(value[i], map);
+        }
+    }
+}
+
 } // namespace
 
 namespace e3d {
@@ -371,6 +415,53 @@ std::string save_scene(const World& world, std::string& error) {
     document.set("root", write_node(world, *root));
 
     return json::dump(document, true, 2);
+}
+
+std::string save_entity_json(const World& world, EntityId entity_id) {
+    const Entity* entity = world.entity(entity_id);
+    if (entity == nullptr) return {};
+    return json::dump(write_node(world, *entity), true, 2);
+}
+
+EntityId instantiate_prefab(World& world, std::string_view text, EntityId parent,
+                            std::string& error) {
+    error.clear();
+
+    json::Value document;
+    json::ParseError parse_error;
+    if (!json::parse(text, document, parse_error)) {
+        error = "prefab: " + parse_error.message;
+        return kInvalidEntity;
+    }
+
+    if (!document.is_object()) {
+        error = "prefab: expected an object";
+        return kInvalidEntity;
+    }
+
+    const json::Value* root = document.find("root");
+    json::Value node = root != nullptr ? *root : document;
+    if (!node.is_object()) {
+        error = "prefab: invalid root node";
+        return kInvalidEntity;
+    }
+
+    std::vector<std::pair<Guid, Guid>> remap;
+    regenerate_guids(node, remap);
+    remap_entity_refs(node, remap);
+
+    SceneLoadResult result;
+    SceneReader reader(world, result);
+    const EntityId entity = reader.read_node(node, parent, "prefab");
+    if (!result.error.empty()) {
+        error = result.error;
+        return kInvalidEntity;
+    }
+
+    std::vector<std::string> warnings;
+    resolve_entity_references(world, warnings);
+    world.update_transforms();
+    return entity;
 }
 
 } // namespace e3d

@@ -101,7 +101,40 @@ Then:
 If you forget to register a project component before `load_scene`, the loader preserves the component
 as unknown data and reports a warning instead of failing.
 
-## 5. Project layout
+## 4b. Editor
+
+The host build also produces the editor:
+
+```powershell
+.\tools\build.ps1 -Target desktop
+.\build\desktop\editor\lumika_editor.exe
+```
+
+It loads `projects/demo_project` on start.
+
+| Panel | What it does |
+| --- | --- |
+| Hierarchy | Entity tree, select, create (`New`), delete |
+| Inspector | Name, transform, components and schema-driven properties, add/remove components |
+| Assets | Indexed by manifest tags, fuzzy search over name/path/tags, prefab list |
+| Console | Status and engine log |
+
+Editing model:
+
+- Properties are generated from `PropDesc`, so new component fields appear without editor changes.
+- Asset-ref properties show a picker filtered by `meta.asset_type`; entity refs show an entity picker.
+- **Create prefab**: select an entity, type a name, press *From selection*. A `.prefab.json` is written
+  to `assets/prefabs/`.
+- **Instantiate**: double-click a prefab (or right-click → Instantiate). GUIDs are regenerated and
+  internal references remapped, so prefabs can be instantiated repeatedly.
+- **Playtest**: `Build → Playtest` runs `tools/build.ps1 -Target 3ds`, then launches the `.3dsx` in
+  Azahar.
+
+Limitations: the editor links the demo project's scripts directly (a generic per-project registry is
+next); there is no 3D scene viewport or gizmo editing yet; `.prefab.json` files are found by scanning
+`assets/prefabs/`, not through the manifest.
+
+
 
 ```
 projects/my_game/

@@ -11,6 +11,7 @@ e3d::AssetType asset_type_from_string(std::string_view text) {
     if (text == "material") return e3d::AssetType::Material;
     if (text == "audio") return e3d::AssetType::Audio;
     if (text == "font") return e3d::AssetType::Font;
+    if (text == "prefab") return e3d::AssetType::Prefab;
     return e3d::AssetType::Unknown;
 }
 
@@ -76,6 +77,21 @@ bool AssetDb::load_manifest(std::string_view text, std::string& error) {
         }
 
         entry.path = raw_path->as_string();
+
+        if (const json::Value* tags = item.find("tags"); tags != nullptr) {
+            if (!tags->is_array()) {
+                error = "manifest: tags must be an array";
+                return false;
+            }
+            for (std::size_t t = 0; t < tags->size(); ++t) {
+                if (!(*tags)[t].is_string()) {
+                    error = "manifest: tags must be strings";
+                    return false;
+                }
+                entry.tags.push_back((*tags)[t].as_string());
+            }
+        }
+
         entries_.push_back(std::move(entry));
     }
 

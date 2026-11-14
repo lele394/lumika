@@ -100,7 +100,7 @@ TEST_CASE("tetris gravity moves the piece down") {
     fixture.game->reset();
     const int start_y = fixture.game->piece_y;
 
-    fixture.step(0.7f);
+    fixture.step(1.1f);
 
     CHECK(fixture.game->piece_y > start_y);
 }

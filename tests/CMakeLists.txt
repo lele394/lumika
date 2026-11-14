@@ -5,6 +5,7 @@ add_executable(e3d_tests
   test_guid.cpp
   test_json.cpp
   test_math.cpp
+  test_prefab.cpp
   test_registry.cpp
   test_scene.cpp
   test_scripts.cpp

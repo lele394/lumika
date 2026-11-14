@@ -227,6 +227,16 @@ additively over a black-backed atlas; alpha-blended UI can replace it later.
 - Loaders are synchronous; do not load during `on_update` in the steady state.
 - Cooked formats: `.cmesh` (see `load_cmesh`), `.t3x` (tex3ds), `.mat.json`, PCM16 `.wav`.
 
+## 7b. Prefabs
+
+```cpp
+std::string node = save_entity_json(world, selected);          // subtree as JSON
+EntityId copy = instantiate_prefab(world, node, parent, error); // fresh GUIDs, refs remapped
+```
+
+`instantiate_prefab` also accepts a full scene document with a `root` node. Internal `$entity`
+references are rewritten to the new GUIDs; external references are left alone.
+
 ## 8. Audio
 
 ```cpp

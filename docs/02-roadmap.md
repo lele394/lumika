@@ -204,6 +204,9 @@ with a text HUD. Audio events, ghost piece, hold and cosmetic animation remain.
 
 ## M6 — Editor MVP
 
+**Status: MVP running.** Host ImGui editor with hierarchy, schema inspector, tagged/fuzzy asset index,
+prefab create/instantiate, scene save and a build+Azahar playtest button.
+
 **Goal:** author and run the demo without touching JSON by hand.
 
 - [ ] ImGui docking shell, saved layout, console log sink.
