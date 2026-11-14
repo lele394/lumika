@@ -38,9 +38,8 @@ bool AssetManager::read(const AssetEntry& entry, std::vector<u8>& bytes,
 }
 
 MeshHandle AssetManager::mesh(const Guid& guid, std::string& error) {
-    MeshHandle handle;
-    if (cached(meshes_, guid, handle)) return handle;
-
+    // Meshes are not cached: renderers mutate their mesh (dynamic board, next
+    // piece), so each request must produce an independent GPU resource.
     const AssetEntry* found = entry(guid, AssetType::Mesh, error);
     if (found == nullptr) return {};
 
@@ -50,13 +49,12 @@ MeshHandle AssetManager::mesh(const Guid& guid, std::string& error) {
     MeshData data = load_cmesh(bytes.data(), bytes.size(), error);
     if (data.vertices.empty()) return {};
 
-    handle = device_.create_mesh(data);
+    const MeshHandle handle = device_.create_mesh(data);
     if (!handle.valid()) {
         error = "mesh upload failed: " + found->path;
         return {};
     }
 
-    meshes_.push_back({guid, handle});
     return handle;
 }
 

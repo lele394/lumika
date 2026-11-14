@@ -42,7 +42,6 @@ private:
     RenderDevice& device_;
     AudioDevice* audio_;
 
-    std::vector<std::pair<Guid, MeshHandle>> meshes_;
     std::vector<std::pair<Guid, TextureHandle>> textures_;
     std::vector<std::pair<Guid, MaterialHandle>> materials_;
     std::vector<std::pair<Guid, ClipHandle>> clips_;
