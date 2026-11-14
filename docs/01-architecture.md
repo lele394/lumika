@@ -22,8 +22,7 @@ one engine core, one data model, two thin platform backends.
   CMakeLists.txt
   CMakePresets.json
   cmake/
-    devkitarm.cmake          # cross toolchain
-    package-3dsx.cmake       # 3dsxtool/smdhtool rules
+    (none yet; devkitPro's 3DS.cmake is used directly)
   engine/
     include/e3d/             # public API (scripts include only this)
       e3d.hpp                # umbrella header
@@ -512,16 +511,22 @@ namespace e3d::platform {
 ## 13. Build, packaging, tooling
 
 - CMake + Ninja, two configure presets: `3ds` (cross) and `desktop`/`tests` (host).
-- `cmake/devkitarm.cmake` sets the compiler paths from `DEVKITPRO`, `CMAKE_SYSTEM_NAME=Generic`,
-  `-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft`, `-fno-exceptions -fno-rtti`,
-  `-ffunction-sections -fdata-sections`, and links with `-specs=3dsx.specs`.
-- Packaging rule: `3dsxtool app.elf app.3dsx --smdh=app.smdh --romfs=romfs/`; `smdhtool` builds the
-  banner from `project.json` + icon. `.cia` is a later target (makerom + bannertool).
-- RomFS staging copies `assets/` (cooked) + `scenes/` + `project.json` into `projects/<p>/romfs/`.
+- 3DS builds use devkitPro's official platform module, `$DEVKITPRO/cmake/3DS.cmake`, via MSYS2-native
+  CMake. It supplies `CMAKE_SYSTEM_NAME=Nintendo3DS`, arch flags (`-march=armv6k -mtune=mpcore
+  -mfloat-abi=hard -mtp=soft`), `-mword-relocations`, `-specs=3dsx.specs`, libctru includes and
+  standard libraries.
+- Packaging uses the module helpers instead of hand-written rules:
+  - `ctr_create_3dsx(target)` → SMDH + `.3dsx` (adds `--romfs=` later);
+  - `ctr_add_shader_library(target)` → `picasso` → `.shbin`;
+  - `ctr_add_graphics_target(target image|atlas ...)` → `tex3ds` → `.t3x`;
+  - `dkp_add_asset_target` / `dkp_install_assets` → staged RomFS.
+- Host builds use native Windows CMake + MinGW-w64 + Ninja; the editor uses the same CMake graph with
+  a `desktop` preset.
 - `tools/meshc` (host C++): OBJ and glTF via `cgltf` → `.cmesh`. `tools/fontc` (host C++): TTF →
   atlas PNG + metrics JSON via `stb_truetype` (already vendored by ImGui).
-- `tools/env.ps1` exports `DEVKITPRO`, `DEVKITARM`, `PATH` for PowerShell builds; `tools/build.ps1`
-  wraps configure/build/run so the editor and CI share one path.
+- `tools/env.ps1` exports `DEVKITPRO`, `DEVKITARM`, `PATH` for host builds; `tools/build.ps1`
+  wraps configure/build/test/run for both presets so the editor and CI share one path.
+- `.cia` packaging (makerom + bannertool) is a later target; MVP ships `.3dsx`.
 
 ## 14. Coding rules and runtime constraints
 

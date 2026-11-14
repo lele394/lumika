@@ -6,8 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+if(NINTENDO_3DS)
   set(E3D_3DS ON)
+  # Device builds are exception- and RTTI-free; keep the engine core identical.
+  add_compile_options(-fno-exceptions -fno-rtti)
 endif()
 
 add_subdirectory(engine)

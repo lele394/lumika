@@ -3,10 +3,10 @@
   "configurePresets": [
     {
       "name": "3ds",
-      "displayName": "Nintendo 3DS (devkitARM, Release)",
+      "displayName": "Nintendo 3DS (devkitARM, RelWithDebInfo)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/3ds",
-      "toolchainFile": "${sourceDir}/cmake/devkitarm.cmake",
+      "toolchainFile": "$env{DEVKITPRO}/cmake/3DS.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
@@ -17,8 +17,7 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/desktop",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "E3D_BUILD_TESTS": "ON"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     }
   ],

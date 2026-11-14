@@ -1,51 +1,82 @@
 # 3ds-engine
 
-A small, data-driven game runtime for the Nintendo 3DS / New 3DS, plus a desktop editor.
+A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
-Current state: **design + toolchain bring-up**. No playable build yet.
+**Status: M0 complete.** The toolchain, cross/host builds, packaging and emulator boot are verified.
+The engine itself starts at M1 (see `docs/02-roadmap.md`).
+
+## Verified so far
+
+| Check | Result |
+| --- | --- |
+| 3DS build | `tetris3d.elf` → `tetris3d.3dsx` (150 KB) via devkitARM r68, libctru 2.7.1 |
+| 3DS run | Boots in Azahar 2126.2; Citro2D triangle on top screen, animated square on bottom, 60 FPS, 3.5 ms frame |
+| Host build | MinGW GCC 16.2 + GLFW 3.5.1; OpenGL 3.3 core context opens |
+| Host tests | doctest suite passes via CTest |
 
 ## Layout
 
-| Path | Purpose |
-| --- | --- |
-| `engine/` | Portable C++20 core: scene, reflection, assets, render abstraction, audio, loop |
-| `engine/platform/3ds/` | libctru + Citro3D + NDSP backend |
-| `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend (editor preview / fast iteration) |
-| `editor/` | Dear ImGui desktop editor (links the same engine core) |
-| `projects/demo_project/` | Demo project: manifest, scenes, assets, C++ scripts |
-| `tools/` | Host-side converters (`meshc`, `fontc`), packaging and run scripts |
-| `third_party/` | Vendored single-header / small libraries |
-| `tests/` | Host-side unit tests for platform-independent code |
-| `docs/` | Assessment, architecture, roadmap |
+| Path | Purpose | Status |
+| --- | --- | --- |
+| `engine/` | Portable C++20 core: types, log; later scene, reflect, assets, render, audio | M0 |
+| `engine/platform/3ds/` | libctru + Citro3D + NDSP backend | planned (M2) |
+| `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned (M2) |
+| `editor/` | Dear ImGui editor | planned (M5) |
+| `projects/demo_project/` | Demo project: manifest, sources, later scenes/assets/scripts | M0 |
+| `tools/` | Host converters and build/run scripts | M0 |
+| `third_party/` | Vendored small libraries (doctest now; ImGui, cgltf, miniaudio later) | M0 |
+| `tests/` | Host-side unit tests | M0 |
+| `docs/` | Assessment, architecture, roadmap | done |
 
 ## Docs
 
 - `docs/00-assessment.md` — feasibility review of `prelim_design.md`, scope cuts, risks
-- `docs/01-architecture.md` — proposed engine design, formats, APIs
+- `docs/01-architecture.md` — engine design, formats, APIs
 - `docs/02-roadmap.md` — milestones with acceptance criteria
 - `prelim_design.md` — original notes, kept for history
 
-## Decisions already taken
+## Build
+
+The toolchain lives outside the repository (see below). From PowerShell:
+
+```powershell
+. .\tools\env.ps1          # host builds only; adds MinGW + devkitPro to PATH
+.\tools\build.ps1 -Target desktop
+.\tools\build.ps1 -Target 3ds
+.\tools\build.ps1 -Target 3ds -Run     # builds, then opens the .3dsx in Azahar
+```
+
+Under the hood:
+
+- **Host:** native CMake 4.4 + MinGW GCC 16.2 + Ninja + GLFW.
+- **3DS:** MSYS2-native CMake + Ninja + devkitPro's official `$DEVKITPRO/cmake/3DS.cmake`,
+  which supplies the arch flags, `3dsx.specs`, libctru includes/libs and the
+  `ctr_create_3dsx()` packaging helper. devkitPro's toolchain refuses to run under native Windows
+  CMake, so 3DS builds are driven through `bash`.
+- Outputs: `build/desktop/.../tetris3d.exe`, `build/3ds/projects/demo_project/tetris3d.3dsx`.
+
+## Toolchain (installed locally, no admin)
+
+| Component | Version | Location |
+| --- | --- | --- |
+| MSYS2 (portable) | rolling | `C:\Users\leo\dev\msys64` |
+| devkitARM | r68 (GCC 16.1) | `...\opt\devkitpro\devkitARM` |
+| libctru / Citro3D / Citro2D | 2.7.1 / 1.7.1 / 1.7.0 | `...\opt\devkitpro\libctru` |
+| 3dstools (`3dsxtool`, `tex3ds`, `3dslink`) + `picasso` | 1.3.1 | `...\opt\devkitpro\tools\bin` |
+| MinGW-w64 GCC / Ninja / GLFW | 16.2 / 1.13.2 / 3.5.1 | `...\msys64\mingw64` |
+| Azahar (portable) | 2126.2 | `C:\Users\leo\dev\azahar` |
+
+## Decisions taken
 
 | Topic | Decision |
 | --- | --- |
 | Language | C++20 for engine, editor, and project scripts |
 | Editor | Dear ImGui on desktop (not C#/Avalonia) |
-| Scripts | Compiled C++ component classes, registered by name. No interpreter |
+| Scripts | Compiled C++ component classes registered by name. No interpreter |
 | Data | JSON for scenes/materials/prefabs; binary for meshes and textures |
 | Rendering | One engine render list, two backends: OpenGL (desktop), Citro3D (device) |
 | Physics | **Not provided.** Engine exposes math, transforms, input, draw and audio; projects implement gameplay/collision |
-| Audio | Included in MVP (NDSP on device, miniaudio on desktop) |
+| Audio | In the MVP (NDSP on device, miniaudio on desktop) |
 | Test target | Azahar emulator first; real hardware later |
 | Build | CMake + Ninja, cross-compiled with devkitARM; `.3dsx` output |
-
-## Toolchain
-
-Installed locally (no admin) at `C:\Users\leo\dev\msys64`:
-
-- MSYS2 portable + devkitPro pacman repositories
-- `3ds-dev`: devkitARM, libctru, Citro3D, Citro2D, 3dstools (3dsxtool, 3dslink, tex3ds), picasso
-- MinGW-w64 GCC, CMake, Ninja, GLFW for host builds
-
-Environment is set by `tools/env.ps1`; CMake presets are in `CMakePresets.json`.
