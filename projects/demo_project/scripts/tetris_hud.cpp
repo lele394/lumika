@@ -28,6 +28,9 @@ void TetrisHud::on_render(e3d::RenderList& list) {
 
     char buffer[64];
 
+    e3d::draw_text(list, font, e3d::Screen::Top, 344.0f, 8.0f, 1.0f,
+                   e3d::Color{0.55f, 0.75f, 1.0f, 1.0f}, "LUMIKA");
+
     std::snprintf(buffer, sizeof(buffer), "SCORE %06d", game->score);
     e3d::draw_text(list, font, e3d::Screen::Top, 8.0f, 8.0f, 1.0f, kWhite, buffer);
 
@@ -37,6 +40,12 @@ void TetrisHud::on_render(e3d::RenderList& list) {
     std::snprintf(buffer, sizeof(buffer), "LINES %d", game->lines);
     e3d::draw_text(list, font, e3d::Screen::Top, 8.0f, 36.0f, 1.0f, kWhite, buffer);
 
+    if (game->combo > 1) {
+        std::snprintf(buffer, sizeof(buffer), "COMBO x%d", game->combo);
+        e3d::draw_text(list, font, e3d::Screen::Top, 8.0f, 50.0f, 1.0f,
+                       e3d::Color{1.0f, 0.85f, 0.3f, 1.0f}, buffer);
+    }
+
     e3d::draw_text(list, font, e3d::Screen::Bottom, 8.0f, 8.0f, 1.0f, kWhite, "NEXT");
 
     std::snprintf(buffer, sizeof(buffer), "LEVEL %d", game->level);
@@ -44,6 +53,12 @@ void TetrisHud::on_render(e3d::RenderList& list) {
 
     std::snprintf(buffer, sizeof(buffer), "LINES %d", game->lines);
     e3d::draw_text(list, font, e3d::Screen::Bottom, 8.0f, 42.0f, 1.0f, kWhite, buffer);
+
+    if (game->combo > 1) {
+        std::snprintf(buffer, sizeof(buffer), "COMBO x%d", game->combo);
+        e3d::draw_text(list, font, e3d::Screen::Bottom, 8.0f, 56.0f, 1.0f,
+                       e3d::Color{1.0f, 0.85f, 0.3f, 1.0f}, buffer);
+    }
 
     if (show_controls) {
         e3d::draw_text(list, font, e3d::Screen::Bottom, 8.0f, 200.0f, 1.0f, kWhite,

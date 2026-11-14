@@ -35,6 +35,16 @@
       "guid": "c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f",
       "type": "material",
       "path": "materials/flat.mat.json"
+    },
+    {
+      "guid": "d4e5f6a7-b8c9-4d0e-9f1a-2b3c4d5e6f70",
+      "type": "texture",
+      "path": "textures/dots.t3x"
+    },
+    {
+      "guid": "e5f6a7b8-c9d0-4e1f-8a2b-3c4d5e6f7081",
+      "type": "material",
+      "path": "materials/dots.mat.json"
     }
   ]
 }

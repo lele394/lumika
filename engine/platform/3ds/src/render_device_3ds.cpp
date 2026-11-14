@@ -9,6 +9,7 @@
 #include <cstring>
 #include <memory>
 
+#include "lit_color_shbin_data.h"
 #include "lit_textured_shbin_data.h"
 #include "unlit_color_shbin_data.h"
 #include "unlit_textured_shbin_data.h"
@@ -115,6 +116,10 @@ public:
                           e3d::ShaderId::UnlitTextured)) {
             return false;
         }
+        if (!load_program(lit_color_, lit_color_shbin, lit_color_shbin_size,
+                          e3d::ShaderId::LitColor)) {
+            return false;
+        }
 
         sprite_capacity_bytes_ = 256 * 1024;
         sprite_buffer_ = linearAlloc(sprite_capacity_bytes_);
@@ -152,7 +157,7 @@ public:
             }
         });
 
-        for (GpuProgram* program : {&unlit_, &lit_, &textured_}) {
+        for (GpuProgram* program : {&unlit_, &lit_, &textured_, &lit_color_}) {
             if (program->dvlb != nullptr) {
                 shaderProgramFree(&program->program);
                 DVLB_Free(program->dvlb);
@@ -267,6 +272,7 @@ public:
 
         Tex3DS_TextureFree(imported);
         C3D_TexSetFilter(&texture.texture, GPU_LINEAR, GPU_LINEAR);
+        C3D_TexSetWrap(&texture.texture, GPU_REPEAT, GPU_REPEAT);
         texture.valid = true;
         return textures_.add(texture);
     }
@@ -316,10 +322,18 @@ public:
                 const GpuMaterial* material = materials_.get(item.material);
                 if (mesh == nullptr || material == nullptr || mesh->vertices == nullptr) continue;
 
-                GpuProgram* program = material->desc.shader == e3d::ShaderId::LitTextured ? &lit_
-                                                                                        : &unlit_;
+                GpuProgram* program = &unlit_;
+                if (material->desc.shader == e3d::ShaderId::LitTextured) {
+                    program = &lit_;
+                } else if (material->desc.shader == e3d::ShaderId::LitColor) {
+                    program = &lit_color_;
+                } else if (material->desc.shader == e3d::ShaderId::UnlitTextured) {
+                    program = &textured_;
+                }
+
                 GpuTexture* texture = nullptr;
-                if (program->shader == e3d::ShaderId::LitTextured) {
+                if (program->shader == e3d::ShaderId::LitTextured ||
+                    program->shader == e3d::ShaderId::UnlitTextured) {
                     texture = textures_.get(material->desc.texture);
                     if (texture == nullptr || !texture->valid) continue;
                 }
@@ -493,6 +507,7 @@ private:
     GpuProgram unlit_;
     GpuProgram lit_;
     GpuProgram textured_;
+    GpuProgram lit_color_;
     GpuProgram* active_ = nullptr;
     void* sprite_buffer_ = nullptr;
     u32 sprite_capacity_bytes_ = 0;

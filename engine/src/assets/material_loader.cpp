@@ -68,6 +68,10 @@ bool parse_material(std::string_view text, MaterialDesc& material, Guid& texture
         material.shader = ShaderId::UnlitColor;
     } else if (shader->as_string() == "lit_textured") {
         material.shader = ShaderId::LitTextured;
+    } else if (shader->as_string() == "lit_color") {
+        material.shader = ShaderId::LitColor;
+    } else if (shader->as_string() == "unlit_textured") {
+        material.shader = ShaderId::UnlitTextured;
     } else {
         error = "material: unknown shader '" + shader->as_string() + "'";
         return false;

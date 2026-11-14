@@ -10,7 +10,7 @@ public:
 
     int width = 10;
     int height = 20;
-    float base_gravity = 0.65f;
+    float base_gravity = 1.0f;
     bool use_seven_bag = true;
 
     // Runtime state (not serialized).
@@ -19,6 +19,7 @@ public:
     int level = 1;
     int lines = 0;
     int pieces_locked = 0;
+    int combo = 0;
     bool game_over = false;
     bool paused = false;
     e3d::u32 revision = 0;

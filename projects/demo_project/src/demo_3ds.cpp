@@ -101,6 +101,32 @@ int main() {
         }
     }
 
+    // Dot-grid playfield backdrop.
+    MaterialHandle dots_material;
+    {
+        Guid dots_guid;
+        guid_from_string("e5f6a7b8-c9d0-4e1f-8a2b-3c4d5e6f7081", dots_guid);
+        dots_material = assets.material(dots_guid, error);
+    }
+    if (dots_material.valid()) {
+        const Color white{1.0f, 1.0f, 1.0f, 1.0f};
+        const Vec3 normal{0.0f, 0.0f, 1.0f};
+        MeshData quad;
+        quad.vertices = {
+            MeshVertex{Vec3{-5.4f, -10.4f, -0.9f}, white, Vec2{0.0f, 0.0f}, normal},
+            MeshVertex{Vec3{5.4f, -10.4f, -0.9f}, white, Vec2{10.0f, 0.0f}, normal},
+            MeshVertex{Vec3{5.4f, 10.4f, -0.9f}, white, Vec2{10.0f, 20.0f}, normal},
+            MeshVertex{Vec3{-5.4f, 10.4f, -0.9f}, white, Vec2{0.0f, 20.0f}, normal},
+        };
+        quad.indices = {0, 1, 2, 0, 2, 3};
+
+        const EntityId backdrop = world.create_entity("Backdrop", world.root());
+        MeshRenderer* backdrop_renderer = world.add_component<MeshRenderer>(backdrop);
+        backdrop_renderer->mesh_handle = render->create_mesh(quad);
+        backdrop_renderer->material_handle = dots_material;
+        backdrop_renderer->layer = 0;
+    }
+
     InputState input;
     RenderList list;
 

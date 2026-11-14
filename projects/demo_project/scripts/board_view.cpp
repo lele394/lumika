@@ -43,32 +43,6 @@ void BoardView::on_update(float /*delta_time*/) {
     const float half_width = static_cast<float>(game->width) * 0.5f;
     const float half_height = static_cast<float>(game->height) * 0.5f;
 
-    // Playfield panel behind the cubes.
-    {
-        const float x0 = -half_width - 0.35f;
-        const float x1 = half_width + 0.35f;
-        const float y0 = -half_height - 0.35f;
-        const float y1 = half_height + 0.35f;
-        const e3d::Color panel{0.035f, 0.045f, 0.10f, 1.0f};
-        const e3d::Vec3 normal{0.0f, 0.0f, 1.0f};
-        const e3d::u16 base = static_cast<e3d::u16>(mesh.vertices.size());
-
-        mesh.vertices.push_back(e3d::MeshVertex{e3d::Vec3{x0, y0, -0.6f}, panel,
-                                                e3d::Vec2{0, 0}, normal});
-        mesh.vertices.push_back(e3d::MeshVertex{e3d::Vec3{x1, y0, -0.6f}, panel,
-                                                e3d::Vec2{0, 0}, normal});
-        mesh.vertices.push_back(e3d::MeshVertex{e3d::Vec3{x1, y1, -0.6f}, panel,
-                                                e3d::Vec2{0, 0}, normal});
-        mesh.vertices.push_back(e3d::MeshVertex{e3d::Vec3{x0, y1, -0.6f}, panel,
-                                                e3d::Vec2{0, 0}, normal});
-
-        const e3d::u16 indices[6] = {base, static_cast<e3d::u16>(base + 1),
-                                     static_cast<e3d::u16>(base + 2), base,
-                                     static_cast<e3d::u16>(base + 2),
-                                     static_cast<e3d::u16>(base + 3)};
-        for (e3d::u16 index : indices) mesh.indices.push_back(index);
-    }
-
     for (int y = 0; y < game->height; ++y) {
         for (int x = 0; x < game->width; ++x) {
             const e3d::u8 cell = game->cell(x, y);

@@ -10,7 +10,7 @@ namespace e3d {
 
 enum class Screen : u8 { Top, Bottom };
 
-enum class ShaderId : u8 { UnlitColor, LitTextured, UnlitTextured };
+enum class ShaderId : u8 { UnlitColor, LitTextured, UnlitTextured, LitColor };
 
 struct MeshTag;
 struct MaterialTag;

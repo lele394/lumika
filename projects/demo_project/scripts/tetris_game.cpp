@@ -82,6 +82,7 @@ void TetrisGame::reset() {
     level = 1;
     lines = 0;
     pieces_locked = 0;
+    combo = 0;
     game_over = false;
     paused = false;
     gravity_timer_ = 0.0f;
@@ -227,9 +228,12 @@ void TetrisGame::clear_lines() {
 
     if (cleared > 0) {
         if (cleared > 4) cleared = 4;
-        score += kScores[cleared] * level;
+        ++combo;
+        score += kScores[cleared] * level * combo;
         lines += cleared;
         level = 1 + lines / 10;
+    } else {
+        combo = 0;
     }
 }
 
