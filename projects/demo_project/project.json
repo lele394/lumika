@@ -1,0 +1,16 @@
+{
+  "format_version": 1,
+  "name": "demo_project",
+  "title": "Tetris 3D",
+  "id": "com.example.tetris3d",
+  "version": "0.1.0",
+  "start_scene": "scenes/main.scene.json",
+  "asset_root": "assets",
+  "scripts": ["scripts"],
+  "targets": {
+    "3ds": {
+      "romfs": "romfs",
+      "stereo": true
+    }
+  }
+}

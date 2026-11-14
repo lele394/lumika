@@ -1,0 +1,12 @@
+build/
+out/
+.vs/
+.vscode/
+.cache/
+*.3dsx
+*.elf
+*.smdh
+*.cia
+*.log
+projects/*/romfs/
+compile_commands.json

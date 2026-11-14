@@ -1,0 +1,36 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "3ds",
+      "displayName": "Nintendo 3DS (devkitARM, Release)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/3ds",
+      "toolchainFile": "${sourceDir}/cmake/devkitarm.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "desktop",
+      "displayName": "Desktop host (MinGW, Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/desktop",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "E3D_BUILD_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "3ds", "configurePreset": "3ds" },
+    { "name": "desktop", "configurePreset": "desktop" }
+  ],
+  "testPresets": [
+    {
+      "name": "desktop",
+      "configurePreset": "desktop",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
