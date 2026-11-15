@@ -24,6 +24,10 @@ public:
     virtual void destroy_texture(TextureHandle texture) = 0;
 
     virtual void execute(const RenderList& list) = 0;
+
+    /// Backends that render offscreen (desktop editor viewport) need the target
+    /// size; the 3DS backend ignores this.
+    virtual void set_viewport(int /*width*/, int /*height*/) {}
 };
 
 } // namespace e3d

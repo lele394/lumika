@@ -110,14 +110,30 @@ The host build also produces the editor:
 .\build\desktop\editor\lumika_editor.exe
 ```
 
-It loads `projects/demo_project` on start.
+It loads `projects/demo_project` on start and docks panels like Unity:
 
 | Panel | What it does |
 | --- | --- |
+| Scene | Live OpenGL viewport of the scene with a ground grid, selection and translate gizmos |
 | Hierarchy | Entity tree, select, create (`New`), delete |
 | Inspector | Name, transform, components and schema-driven properties, add/remove components |
-| Assets | Indexed by manifest tags, fuzzy search over name/path/tags, prefab list |
+| Assets | Indexed by manifest tags, type + tag filters, fuzzy search over name/path/tags, prefab list |
 | Console | Status and engine log |
+
+Scene view controls:
+
+| Input | Action |
+| --- | --- |
+| Right-drag | Look around |
+| `WASD` / arrow keys | Fly forward/back/strafe (`Q`/`E` down/up) |
+| `Shift` | Faster movement |
+| Mouse wheel | Dolly along the view direction |
+| Left-click | Select the nearest entity; click a gizmo handle and drag to move it on that axis |
+| `F` | Frame the selected entity |
+
+`View → Reset Layout` rebuilds the default dockspace, `View → Reset Camera` returns to the start
+pose. The viewport renders through the same `RenderList` as the 3DS, using the desktop OpenGL 3.3
+backend in `engine/platform/desktop`.
 
 Editing model:
 
@@ -131,8 +147,9 @@ Editing model:
   Azahar.
 
 Limitations: the editor links the demo project's scripts directly (a generic per-project registry is
-next); there is no 3D scene viewport or gizmo editing yet; `.prefab.json` files are found by scanning
-`assets/prefabs/`, not through the manifest.
+next); scripts do not run in the editor, so the viewport shows the scene's authored meshes rather
+than runtime-generated geometry; gizmos are translate-only; there is no undo/redo; `.prefab.json`
+files are found by scanning `assets/prefabs/`, not through the manifest.
 
 
 

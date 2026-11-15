@@ -204,19 +204,21 @@ with a text HUD. Audio events, ghost piece, hold and cosmetic animation remain.
 
 ## M6 — Editor MVP
 
-**Status: MVP running.** Host ImGui editor with hierarchy, schema inspector, tagged/fuzzy asset index,
-prefab create/instantiate, scene save and a build+Azahar playtest button.
+**Status: MVP running.** Host ImGui editor with a docked Unity-style layout (live scene viewport,
+free-fly camera, ground grid, click selection, translate gizmos), hierarchy, schema inspector,
+tagged/fuzzy asset index, prefab create/instantiate, scene save and a build+Azahar playtest button.
 
 **Goal:** author and run the demo without touching JSON by hand.
 
-- [ ] ImGui docking shell, saved layout, console log sink.
+- [x] ImGui docking shell, saved layout, console log sink.
 - [ ] Project open/recent; asset scan with `.meta` GUIDs.
-- [ ] Hierarchy: create, rename, delete, reparent, multi-select.
-- [ ] Inspector: schema-driven widgets from `PropDesc`, asset pickers, add/remove components, defaults.
-- [ ] Assets: browse, create material, import mesh (runs `meshc`), reveal GUID.
+- [x] Hierarchy: create, rename, delete (reparent/multi-select pending).
+- [x] Inspector: schema-driven widgets from `PropDesc`, asset pickers, add/remove components, defaults.
+- [ ] Assets: browse, create material, import mesh (runs `meshc`), reveal GUID (index + tag filter done).
 - [ ] Save with unknown-key preservation; undo/redo command stack.
-- [ ] Build & Run: Ninja target + Azahar; Play in editor (desktop backend).
-- [ ] **M6b (optional):** scene viewport, orbit camera, translate/rotate gizmos, picking.
+- [x] Build & Run: Ninja target + Azahar.
+- [ ] Play in editor (desktop backend, live scripts).
+- [x] **M6b:** scene viewport, fly camera, translate gizmos, picking.
 
 **Acceptance:** the demo scene can be recreated from an empty project in the editor; a script property
 edited in the inspector changes gameplay; save/load is lossless; Build & Run reaches the emulator in

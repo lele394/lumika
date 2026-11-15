@@ -14,8 +14,10 @@ prefabs, save the scene, and build/launch Azahar.
 .\build\desktop\editor\lumika_editor.exe
 ```
 
-Panels: Hierarchy, Inspector, tagged/fuzzy-search Asset index, Console. `Build → Playtest` compiles
-the 3DS target and launches Azahar. See `docs/10-getting-started.md` §4b.
+Unity-style docked panels: a live **Scene** viewport (free-fly camera, ground grid, click selection,
+translate gizmos), Hierarchy, Inspector, a tagged/fuzzy-search **Assets** index, and Console.
+`Build -> Playtest` compiles the 3DS target and launches Azahar. See
+`docs/10-getting-started.md` §4b.
 
 ## Audio
 

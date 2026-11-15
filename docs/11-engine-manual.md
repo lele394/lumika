@@ -169,8 +169,18 @@ list.draw(camera_index, mesh, material, model_matrix);
 list.draw_sprite(SpriteItem{...});
 ```
 
-Backends build the projection themselves: Citro3D uses `Mtx_PerspTilt`, desktop will use a standard
-perspective.
+Backends build the projection themselves: Citro3D uses `Mtx_PerspTilt`; the desktop backend uses a
+standard OpenGL perspective. A backend that renders into an offscreen target can be told the target
+size with `RenderDevice::set_viewport(width, height)`; it defaults to a no-op, so the 3DS backend is
+unchanged.
+
+### Desktop backend
+
+`engine/platform/desktop` provides `create_render_device_gl()`, an OpenGL 3.3 implementation of the
+same `RenderDevice` interface (shaders, meshes, materials, viewport). The editor uses it to draw the
+scene into a framebuffer texture that Dear ImGui displays, so the viewport is depth-correct and
+aspect-correct without a second renderer. Textures currently fall back to white in the editor until
+`.t3x` decoding lands on the host.
 
 ### Materials
 

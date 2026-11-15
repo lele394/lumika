@@ -1,22 +1,29 @@
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "e3d/e3d.hpp"
+#include "e3d/assets/asset_manager.hpp"
+#include "e3d/assets/directory_file_system.hpp"
+#include "e3d/platform/desktop/render_device_gl.hpp"
 #include "project_scripts.hpp"
 
 namespace fs = std::filesystem;
@@ -104,14 +111,39 @@ struct Editor final {
 
     World world;
     AssetDb database;
+    AssetDb renderDatabase;
+    std::unique_ptr<DirectoryFileSystem> assetFiles;
+    std::unique_ptr<AssetManager> assetManager;
+    std::unique_ptr<RenderDevice> render;
+
     EntityId selected = kInvalidEntity;
     bool dirty = false;
     bool project_loaded = false;
+    bool layout_built = false;
+
+    Vec3 cameraPosition{0.0f, 2.0f, 28.0f};
+    float cameraYaw = -90.0f;
+    float cameraPitch = 0.0f;
+
+    GLuint framebuffer = 0;
+    GLuint colorTexture = 0;
+    GLuint depthBuffer = 0;
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+
+    MeshHandle grid_mesh;
+    MaterialHandle grid_material;
+    bool grid_ready = false;
+
+    int dragAxis = -1;
+    Vec3 dragStart{};
+    ImVec2 dragMouse{};
 
     char search[128] = {};
     char new_entity_name[64] = "GameObject";
     char prefab_name[64] = "new_prefab";
     int asset_filter = 0;
+    std::string tag_filter = "all tags";
     std::string status = "ready";
     std::vector<PrefabFile> prefabs;
 
@@ -138,6 +170,21 @@ struct Editor final {
             return false;
         }
 
+        if (render) {
+            const std::string cookedDir = (fs::path(assetsDir) / "cooked").string();
+            const std::string cookedManifest =
+                read_file((fs::path(cookedDir) / "manifest.json").string());
+            renderDatabase = AssetDb{};
+            if (!cookedManifest.empty()) renderDatabase.load_manifest(cookedManifest, error);
+
+            assetFiles = std::make_unique<DirectoryFileSystem>(cookedDir);
+            assetManager = std::make_unique<AssetManager>(renderDatabase, *assetFiles, *render, nullptr);
+
+            std::vector<std::string> warnings;
+            resolve_scene_assets(world, *assetManager, warnings);
+            for (const std::string& warning : warnings) log_lines().push_back("[asset] " + warning);
+        }
+
         selected = loaded.root;
         status = "loaded " + base_name(scenePath);
         scan_prefabs();
@@ -153,6 +200,11 @@ struct Editor final {
             if (entry.path().extension() != ".json") continue;
             PrefabFile prefab;
             prefab.name = entry.path().stem().string();
+            const std::string suffix = ".prefab";
+            if (prefab.name.size() > suffix.size() &&
+                prefab.name.compare(prefab.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                prefab.name.resize(prefab.name.size() - suffix.size());
+            }
             prefab.path = entry.path().string();
             prefabs.push_back(std::move(prefab));
         }
@@ -272,8 +324,6 @@ struct Editor final {
     }
 
     void draw_hierarchy() {
-        ImGui::SetNextWindowPos(ImVec2(10, 40), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(320, 600), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Hierarchy")) {
             ImGui::End();
             return;
@@ -410,8 +460,6 @@ struct Editor final {
     }
 
     void draw_inspector() {
-        ImGui::SetNextWindowPos(ImVec2(340, 40), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(760, 600), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Inspector")) {
             ImGui::End();
             return;
@@ -473,8 +521,6 @@ struct Editor final {
     }
 
     void draw_assets() {
-        ImGui::SetNextWindowPos(ImVec2(1110, 40), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(480, 600), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Assets")) {
             ImGui::End();
             return;
@@ -483,15 +529,37 @@ struct Editor final {
         ImGui::InputTextWithHint("##search", "fuzzy search name, path or tag", search,
                                  sizeof(search));
 
-        static const char* const kFilters[] = {"All",      "Mesh",   "Texture", "Material",
-                                               "Audio",    "Font",   "Prefab"};
+        static const char* const kFilters[] = {"all",     "mesh",  "texture", "material",
+                                               "audio",   "font",  "prefab"};
         ImGui::Combo("##filter", &asset_filter, kFilters, IM_ARRAYSIZE(kFilters));
+
+        ImGui::SameLine();
+        if (ImGui::BeginCombo("##tag", tag_filter.c_str())) {
+            if (ImGui::Selectable("all tags", tag_filter == "all tags")) tag_filter = "all tags";
+            std::vector<std::string> tags;
+            for (const AssetEntry& entry : database.entries()) {
+                for (const std::string& tag : entry.tags) {
+                    if (std::find(tags.begin(), tags.end(), tag) == tags.end()) tags.push_back(tag);
+                }
+            }
+            std::sort(tags.begin(), tags.end());
+            for (const std::string& tag : tags) {
+                if (ImGui::Selectable(("#" + tag).c_str(), tag_filter == tag)) tag_filter = tag;
+            }
+            ImGui::EndCombo();
+        }
 
         ImGui::SeparatorText("Indexed assets");
         for (const AssetEntry& entry : database.entries()) {
-            const bool filter_ok =
+            const bool type_ok =
                 asset_filter == 0 || std::strcmp(asset_type_name(entry.type), kFilters[asset_filter]) == 0;
-            if (!filter_ok) continue;
+            if (!type_ok) continue;
+
+            if (tag_filter != "all tags") {
+                const bool has_tag =
+                    std::find(entry.tags.begin(), entry.tags.end(), tag_filter) != entry.tags.end();
+                if (!has_tag) continue;
+            }
 
             std::string haystack = entry.path + " " + asset_type_name(entry.type);
             for (const std::string& tag : entry.tags) haystack += " " + tag;
@@ -504,17 +572,18 @@ struct Editor final {
         }
 
         ImGui::SeparatorText("Prefabs");
-        for (const PrefabFile& prefab : prefabs) {
-            if (asset_filter != 0 && asset_filter != 6) continue;
-            if (!fuzzy_match(prefab.name, search) && !fuzzy_match(prefab.path, search)) continue;
-            ImGui::PushID(prefab.path.c_str());
-            ImGui::Selectable(prefab.name.c_str());
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) instantiate(prefab);
-            if (ImGui::BeginPopupContextItem("prefab_menu")) {
-                if (ImGui::MenuItem("Instantiate")) instantiate(prefab);
-                ImGui::EndPopup();
+        if (asset_filter == 0 || asset_filter == 6) {
+            for (const PrefabFile& prefab : prefabs) {
+                if (!fuzzy_match(prefab.name, search) && !fuzzy_match(prefab.path, search)) continue;
+                ImGui::PushID(prefab.path.c_str());
+                ImGui::Selectable(prefab.name.c_str());
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) instantiate(prefab);
+                if (ImGui::BeginPopupContextItem("prefab_menu")) {
+                    if (ImGui::MenuItem("Instantiate")) instantiate(prefab);
+                    ImGui::EndPopup();
+                }
+                ImGui::PopID();
             }
-            ImGui::PopID();
         }
 
         ImGui::SeparatorText("Create prefab");
@@ -526,8 +595,6 @@ struct Editor final {
     }
 
     void draw_console() {
-        ImGui::SetNextWindowPos(ImVec2(10, 650), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(1580, 220), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Console")) {
             ImGui::End();
             return;
@@ -541,6 +608,302 @@ struct Editor final {
         ImGui::End();
     }
 
+    Vec3 forward() const {
+        const float yaw = cameraYaw * kDegToRad;
+        const float pitch = cameraPitch * kDegToRad;
+        return Vec3{std::cos(pitch) * std::cos(yaw), std::sin(pitch),
+                    std::cos(pitch) * std::sin(yaw)};
+    }
+
+    bool project(Vec3 world, ImVec2 origin, ImVec2 size, ImVec2& out) const {
+        const Vec3 f = forward();
+        const Vec3 r = normalize(cross(f, Vec3{0, 1, 0}));
+        const Vec3 u = cross(r, f);
+        const Vec3 rel = world - cameraPosition;
+        const float depth = dot(rel, f);
+        if (depth <= 0.05f) return false;
+
+        const float aspect = size.x / size.y;
+        const float tan_half = std::tan(55.0f * kDegToRad * 0.5f);
+        const float ndc_x = (dot(rel, r) / depth) / (tan_half * aspect);
+        const float ndc_y = (dot(rel, u) / depth) / tan_half;
+
+        out.x = origin.x + (ndc_x * 0.5f + 0.5f) * size.x;
+        out.y = origin.y + (0.5f - ndc_y * 0.5f) * size.y;
+        return true;
+    }
+
+    void ensure_framebuffer(int width, int height) {
+        if (framebuffer == 0) {
+            glGenFramebuffers(1, &framebuffer);
+            glGenTextures(1, &colorTexture);
+            glGenRenderbuffers(1, &depthBuffer);
+        }
+        if (width == framebufferWidth && height == framebufferHeight) return;
+        framebufferWidth = width;
+        framebufferHeight = height;
+
+        glBindTexture(GL_TEXTURE_2D, colorTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,
+                                  depthBuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void pick_at(ImVec2 mouse, ImVec2 origin, ImVec2 size) {
+        EntityId best = kInvalidEntity;
+        float best_distance = 36.0f;
+
+        for (const auto& slot : world.entities()) {
+            if (slot == nullptr) continue;
+            const MeshRenderer* renderer = slot->find_component<MeshRenderer>();
+            const bool drawable = renderer != nullptr && renderer->mesh_handle.valid();
+            const bool camera = slot->find_component<Camera>() != nullptr;
+            if (!drawable && !camera) continue;
+
+            ImVec2 screen;
+            const Vec3 position{slot->world.m[12], slot->world.m[13], slot->world.m[14]};
+            if (!project(position, origin, size, screen)) continue;
+            const float dx = screen.x - mouse.x;
+            const float dy = screen.y - mouse.y;
+            const float distance = std::sqrt(dx * dx + dy * dy);
+            if (distance < best_distance) {
+                best_distance = distance;
+                best = slot->id;
+            }
+        }
+
+        selected = best;
+        status = best != kInvalidEntity ? "selected " + world.entity(best)->name
+                                        : std::string("selection cleared");
+    }
+
+    MeshData build_grid() const {
+        MeshData data;
+        const float extent = 60.0f;
+        const float half_width = 0.012f;
+
+        auto add_quad = [&data](Vec3 a, Vec3 b, Vec3 c, Vec3 d, Color color) {
+            const u16 base = static_cast<u16>(data.vertices.size());
+            data.vertices.push_back(MeshVertex{a, color, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
+            data.vertices.push_back(MeshVertex{b, color, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
+            data.vertices.push_back(MeshVertex{c, color, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
+            data.vertices.push_back(MeshVertex{d, color, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
+            data.indices.insert(data.indices.end(),
+                                {base, static_cast<u16>(base + 1), static_cast<u16>(base + 2),
+                                 base, static_cast<u16>(base + 2), static_cast<u16>(base + 3)});
+        };
+
+        for (int i = -60; i <= 60; ++i) {
+            if (i == 0) continue;
+            const float p = static_cast<float>(i);
+            const Color color = (i % 10 == 0) ? Color{0.32f, 0.34f, 0.42f, 0.85f}
+                                              : Color{0.22f, 0.23f, 0.29f, 0.6f};
+            add_quad(Vec3{p - half_width, 0.0f, -extent}, Vec3{p + half_width, 0.0f, -extent},
+                     Vec3{p + half_width, 0.0f, extent}, Vec3{p - half_width, 0.0f, extent},
+                     color);
+            add_quad(Vec3{-extent, 0.0f, p - half_width}, Vec3{extent, 0.0f, p - half_width},
+                     Vec3{extent, 0.0f, p + half_width}, Vec3{-extent, 0.0f, p + half_width},
+                     color);
+        }
+
+        // World axes: X red, Z blue, slightly brighter than the grid.
+        add_quad(Vec3{-extent, 0.0f, -half_width * 2.0f}, Vec3{extent, 0.0f, -half_width * 2.0f},
+                 Vec3{extent, 0.0f, half_width * 2.0f}, Vec3{-extent, 0.0f, half_width * 2.0f},
+                 Color{0.72f, 0.24f, 0.26f, 0.9f});
+        add_quad(Vec3{-half_width * 2.0f, 0.0f, -extent}, Vec3{half_width * 2.0f, 0.0f, -extent},
+                 Vec3{half_width * 2.0f, 0.0f, extent}, Vec3{-half_width * 2.0f, 0.0f, extent},
+                 Color{0.26f, 0.42f, 0.78f, 0.9f});
+        return data;
+    }
+
+    void ensure_grid() {
+        if (grid_ready) return;
+        grid_ready = true;
+        grid_mesh = render->create_mesh(build_grid());
+        MaterialDesc material;
+        material.shader = ShaderId::UnlitColor;
+        grid_material = render->create_material(material);
+    }
+
+    void draw_scene() {
+        if (!ImGui::Begin("Scene")) {
+            ImGui::End();
+            return;
+        }
+
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const int width = std::max(64, static_cast<int>(avail.x));
+        const int height = std::max(64, static_cast<int>(avail.y));
+
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##scene_canvas", ImVec2(static_cast<float>(width),
+                                                        static_cast<float>(height)),
+                               ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+
+        const bool hovered = ImGui::IsItemHovered();
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 size(static_cast<float>(width), static_cast<float>(height));
+
+        static bool looking = false;
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+            looking = true;
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+            looking = false;
+        }
+        if (looking) {
+            cameraYaw += io.MouseDelta.x * 0.16f;
+            cameraPitch -= io.MouseDelta.y * 0.16f;
+            if (cameraPitch > 89.0f) cameraPitch = 89.0f;
+            if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+            ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+        }
+
+        const bool can_move = (hovered || looking) && !io.WantTextInput;
+        if (can_move) {
+            const float speed = (io.KeyShift ? 36.0f : 12.0f) * io.DeltaTime;
+            const Vec3 f = forward();
+            const Vec3 r = normalize(cross(f, Vec3{0, 1, 0}));
+            if (ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_UpArrow)) cameraPosition += f * speed;
+            if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow)) cameraPosition = cameraPosition - f * speed;
+            if (ImGui::IsKeyDown(ImGuiKey_A) || ImGui::IsKeyDown(ImGuiKey_LeftArrow)) cameraPosition = cameraPosition - r * speed;
+            if (ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_RightArrow)) cameraPosition += r * speed;
+            if (ImGui::IsKeyDown(ImGuiKey_Q)) cameraPosition.y -= speed;
+            if (ImGui::IsKeyDown(ImGuiKey_E)) cameraPosition.y += speed;
+            if (io.MouseWheel != 0.0f) cameraPosition += f * (io.MouseWheel * 2.0f);
+
+            if (ImGui::IsKeyPressed(ImGuiKey_F)) {
+                Entity* target = world.entity(selected);
+                if (target != nullptr) {
+                    const Vec3 center{target->world.m[12], target->world.m[13], target->world.m[14]};
+                    cameraPosition = center - forward() * 10.0f;
+                    status = "focused " + target->name;
+                }
+            }
+        }
+
+        ensure_framebuffer(width, height);
+        ensure_grid();
+
+        RenderList list;
+        CameraDesc camera;
+        camera.screen = Screen::Top;
+        camera.position = cameraPosition;
+        camera.target = cameraPosition + forward();
+        camera.up = Vec3{0, 1, 0};
+        camera.field_of_view = 55.0f;
+        camera.near_plane = 0.05f;
+        camera.far_plane = 500.0f;
+        camera.clear = Color{0.055f, 0.06f, 0.085f, 1.0f};
+        const u8 camera_index = list.add_camera(camera);
+
+        if (grid_mesh.valid() && grid_material.valid()) {
+            list.draw(camera_index, grid_mesh, grid_material, mat4_identity());
+        }
+
+        for (const auto& slot : world.entities()) {
+            if (slot == nullptr) continue;
+            MeshRenderer* renderer = slot->find_component<MeshRenderer>();
+            if (renderer == nullptr) continue;
+            if (!renderer->mesh_handle.valid() || !renderer->material_handle.valid()) continue;
+            list.draw(camera_index, renderer->mesh_handle, renderer->material_handle, slot->world);
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        render->set_viewport(width, height);
+        render->execute(list);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddImage(static_cast<ImTextureID>(static_cast<uintptr_t>(colorTexture)),
+                            origin, ImVec2(origin.x + size.x, origin.y + size.y), ImVec2(0, 1),
+                            ImVec2(1, 0));
+        draw_list->AddText(ImVec2(origin.x + 10.0f, origin.y + size.y - 22.0f),
+                           IM_COL32(150, 160, 180, 170),
+                           "RMB look  |  WASD / arrows move  |  Shift speed  |  F focus  |  LMB select + drag gizmo");
+
+        // Gizmo + click selection.
+        Entity* selected_entity = world.entity(selected);
+        if (selected_entity != nullptr) {
+            const Vec3 origin_world{selected_entity->world.m[12], selected_entity->world.m[13],
+                                    selected_entity->world.m[14]};
+            const Vec3 axes[3] = {Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}};
+            const ImU32 colors[3] = {IM_COL32(230, 70, 70, 255), IM_COL32(80, 220, 100, 255),
+                                     IM_COL32(80, 140, 255, 255)};
+            ImVec2 points[3];
+
+            for (int axis = 0; axis < 3; ++axis) {
+                ImVec2 a;
+                ImVec2 b;
+                if (!project(origin_world, origin, size, a)) continue;
+                if (!project(origin_world + axes[axis] * 1.6f, origin, size, b)) continue;
+                points[axis] = b;
+                draw_list->AddLine(a, b, colors[axis], 2.5f);
+                draw_list->AddCircleFilled(b, 5.0f, colors[axis]);
+            }
+
+            if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && dragAxis < 0) {
+                float best = 8.0f;
+                for (int axis = 0; axis < 3; ++axis) {
+                    ImVec2 a;
+                    if (!project(origin_world, origin, size, a)) continue;
+                    const ImVec2 ab(points[axis].x - a.x, points[axis].y - a.y);
+                    const ImVec2 ap(io.MousePos.x - a.x, io.MousePos.y - a.y);
+                    const float length2 = ab.x * ab.x + ab.y * ab.y;
+                    if (length2 < 1.0f) continue;
+                    float t = (ap.x * ab.x + ap.y * ab.y) / length2;
+                    if (t < 0.0f) t = 0.0f;
+                    if (t > 1.0f) t = 1.0f;
+                    const float dx = a.x + ab.x * t - io.MousePos.x;
+                    const float dy = a.y + ab.y * t - io.MousePos.y;
+                    const float distance = std::sqrt(dx * dx + dy * dy);
+                    if (distance < best) {
+                        best = distance;
+                        dragAxis = axis;
+                        dragStart = selected_entity->transform.position;
+                        dragMouse = io.MousePos;
+                    }
+                }
+            }
+
+            if (dragAxis >= 0 && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                ImVec2 a;
+                if (project(origin_world, origin, size, a)) {
+                    const ImVec2 ab(points[dragAxis].x - a.x, points[dragAxis].y - a.y);
+                    const float length2 = ab.x * ab.x + ab.y * ab.y;
+                    if (length2 > 1.0f) {
+                        const float delta =
+                            ((io.MousePos.x - dragMouse.x) * ab.x +
+                             (io.MousePos.y - dragMouse.y) * ab.y) /
+                            length2;
+                        selected_entity->transform.position =
+                            dragStart + axes[dragAxis] * (delta * 1.6f);
+                        dirty = true;
+                    }
+                }
+            }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) dragAxis = -1;
+        }
+
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && dragAxis < 0) {
+            pick_at(io.MousePos, origin, size);
+        }
+
+        ImGui::End();
+    }
+
     void draw_menu() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
@@ -548,6 +911,23 @@ struct Editor final {
                 if (ImGui::MenuItem("Reload Project")) load_project(projectDir);
                 ImGui::Separator();
                 if (ImGui::MenuItem("Quit")) glfwSetWindowShouldClose(glfwGetCurrentContext(), 1);
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("View")) {
+                if (ImGui::MenuItem("Reset Layout")) layout_built = false;
+                if (ImGui::MenuItem("Reset Camera")) {
+                    cameraPosition = Vec3{0.0f, 2.0f, 28.0f};
+                    cameraYaw = -90.0f;
+                    cameraPitch = 0.0f;
+                }
+                if (ImGui::MenuItem("Frame Selected", "F")) {
+                    Entity* target = world.entity(selected);
+                    if (target != nullptr) {
+                        const Vec3 center{target->world.m[12], target->world.m[13],
+                                          target->world.m[14]};
+                        cameraPosition = center - forward() * 10.0f;
+                    }
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Build")) {
@@ -572,8 +952,43 @@ struct Editor final {
         }
     }
 
+    void build_layout(ImGuiID dock) {
+        ImGui::DockBuilderRemoveNode(dock);
+        ImGui::DockBuilderAddNode(dock, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dock, ImGui::GetMainViewport()->WorkSize);
+
+        ImGuiID center = dock;
+        const ImGuiID left =
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, nullptr, &center);
+        const ImGuiID right =
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.24f, nullptr, &center);
+        const ImGuiID bottom =
+            ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.24f, nullptr, &center);
+
+        ImGuiID left_top = 0;
+        const ImGuiID left_bottom =
+            ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.45f, nullptr, &left_top);
+
+        ImGui::DockBuilderDockWindow("Scene", center);
+        ImGui::DockBuilderDockWindow("Hierarchy", left_top);
+        ImGui::DockBuilderDockWindow("Assets", left_bottom);
+        ImGui::DockBuilderDockWindow("Inspector", right);
+        ImGui::DockBuilderDockWindow("Console", bottom);
+        ImGui::DockBuilderFinish(dock);
+    }
+
     void draw() {
+        world.update_transforms();
         draw_menu();
+
+        const ImGuiID dock = ImGui::DockSpaceOverViewport(
+            0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+        if (!layout_built) {
+            build_layout(dock);
+            layout_built = true;
+        }
+
+        draw_scene();
         draw_hierarchy();
         draw_inspector();
         draw_assets();
@@ -597,6 +1012,9 @@ int main() {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
+    glewExperimental = GL_TRUE;
+    if (glewInit() != GLEW_OK) return 1;
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -613,6 +1031,11 @@ int main() {
     register_project_components();
 
     Editor editor;
+    editor.render = create_render_device_gl();
+    if (!editor.render->init()) {
+        std::fprintf(stderr, "Lumika: failed to initialise the OpenGL renderer\n");
+        return 1;
+    }
     editor.load_project(std::string(LUMIKA_ROOT) + "/projects/demo_project");
 
     while (glfwWindowShouldClose(window) == GLFW_FALSE) {
