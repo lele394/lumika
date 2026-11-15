@@ -39,6 +39,26 @@ void resolve_scene_assets(World& world, AssetManager& assets,
                 }
             }
         }
+
+        error.clear();
+        if (UiCanvas* canvas = slot->find_component<UiCanvas>(); canvas != nullptr) {
+            if (canvas->font.guid.valid()) {
+                canvas->font_texture = assets.texture(canvas->font.guid, error);
+                if (!canvas->font_texture.valid()) {
+                    warnings.push_back("entity '" + slot->name + "': " + error);
+                }
+            }
+        }
+
+        error.clear();
+        if (UiImage* image = slot->find_component<UiImage>(); image != nullptr) {
+            if (image->texture.guid.valid()) {
+                image->texture_handle = assets.texture(image->texture.guid, error);
+                if (!image->texture_handle.valid()) {
+                    warnings.push_back("entity '" + slot->name + "': " + error);
+                }
+            }
+        }
     }
 }
 

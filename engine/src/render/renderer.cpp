@@ -1,5 +1,6 @@
 #include "e3d/render/renderer.hpp"
 
+#include "e3d/render/ui.hpp"
 #include "e3d/scene/components.hpp"
 #include "e3d/scene/world.hpp"
 
@@ -78,6 +79,8 @@ void build_render_list(const World& world, RenderList& list) {
                       slot->world);
         }
     }
+
+    build_ui_render_list(world, list);
 }
 
 } // namespace e3d

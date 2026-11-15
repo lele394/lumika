@@ -205,10 +205,10 @@ with a text HUD. Audio events, ghost piece, hold and cosmetic animation remain.
 ## M6 — Editor MVP
 
 **Status: MVP running.** Host ImGui editor with a docked Unity-style layout (live scene viewport,
-free-fly camera, ground grid, click selection, translate gizmos, camera frustum gizmos, Top/Bottom
-camera preview tab), hierarchy, schema inspector, tagged/fuzzy asset index, prefab
-create/instantiate, scene save, in-editor Play (scripts + dynamic meshes) and a build+Azahar playtest
-button.
+free-fly camera, ground grid, click selection, translate gizmos, camera frustum gizmos, UI designer
+tab and Top/Bottom camera preview tab), hierarchy, schema inspector, tagged/fuzzy asset index, prefab
+create/instantiate, scene save, in-editor Play (scripts + dynamic meshes), `.t3x`/sprite support on
+the host and a build+Azahar playtest button.
 
 **Goal:** author and run the demo without touching JSON by hand.
 
@@ -219,9 +219,11 @@ button.
 - [ ] Assets: browse, create material, import mesh (runs `meshc`), reveal GUID (index + tag filter done).
 - [ ] Save with unknown-key preservation; undo/redo command stack.
 - [x] Build & Run: Ninja target + Azahar.
-- [x] Play in editor: scripts + dynamic meshes live (3DS input, audio, sprite/HUD preview pending).
+- [x] Play in editor: scripts + dynamic meshes live (3DS input and audio pending).
 - [x] **M6b:** scene viewport, fly camera, translate gizmos, picking, camera frustum gizmos,
   Top/Bottom camera preview tab.
+- [x] **M6c:** desktop `.t3x` decoding + sprite/text pass, data-driven UI (`UiCanvas`/`UiText`/`UiImage`)
+  and a UI designer tab with select/drag/add text.
 
 **Acceptance:** the demo scene can be recreated from an empty project in the editor; a script property
 edited in the inspector changes gameplay; save/load is lossless; Build & Run reaches the emulator in

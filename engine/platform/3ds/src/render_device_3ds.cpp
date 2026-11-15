@@ -122,8 +122,10 @@ public:
         }
 
         sprite_capacity_bytes_ = 256 * 1024;
-        sprite_buffer_ = linearAlloc(sprite_capacity_bytes_);
-        if (sprite_buffer_ == nullptr) return false;
+        for (void*& buffer : sprite_buffers_) {
+            buffer = linearAlloc(sprite_capacity_bytes_);
+            if (buffer == nullptr) return false;
+        }
 
         C3D_AttrInfo* attributes = C3D_GetAttrInfo();
         AttrInfo_Init(attributes);
@@ -165,9 +167,11 @@ public:
             }
         }
 
-        if (sprite_buffer_ != nullptr) {
-            linearFree(sprite_buffer_);
-            sprite_buffer_ = nullptr;
+        for (void*& buffer : sprite_buffers_) {
+            if (buffer != nullptr) {
+                linearFree(buffer);
+                buffer = nullptr;
+            }
         }
 
         if (top_ != nullptr) {
@@ -421,7 +425,9 @@ private:
             C3D_FVUnifSet(GPU_VERTEX_SHADER, textured_.tint, 1.0f, 1.0f, 1.0f, 1.0f);
         }
 
-        auto* vertices = static_cast<e3d::MeshVertex*>(sprite_buffer_);
+        auto* vertices = static_cast<e3d::MeshVertex*>(
+            sprite_buffers_[screen == e3d::Screen::Top ? 0 : 1]);
+        void* sprite_buffer = sprite_buffers_[screen == e3d::Screen::Top ? 0 : 1];
         const u32 capacity = sprite_capacity_bytes_ / sizeof(e3d::MeshVertex);
 
         struct Batch final {
@@ -472,12 +478,12 @@ private:
 
         if (vertex_count == 0) return;
 
-        GSPGPU_FlushDataCache(sprite_buffer_,
+        GSPGPU_FlushDataCache(sprite_buffer,
                               static_cast<u32>(vertex_count * sizeof(e3d::MeshVertex)));
 
         C3D_BufInfo* buffers = C3D_GetBufInfo();
         BufInfo_Init(buffers);
-        BufInfo_Add(buffers, sprite_buffer_, sizeof(e3d::MeshVertex), 4, 0x3210);
+        BufInfo_Add(buffers, sprite_buffer, sizeof(e3d::MeshVertex), 4, 0x3210);
 
         for (u32 i = 0; i < batch_count; ++i) {
             GpuTexture* texture = textures_.get(batches[i].texture);
@@ -515,7 +521,7 @@ private:
     GpuProgram textured_;
     GpuProgram lit_color_;
     GpuProgram* active_ = nullptr;
-    void* sprite_buffer_ = nullptr;
+    void* sprite_buffers_[2] = {nullptr, nullptr};
     u32 sprite_capacity_bytes_ = 0;
     e3d::HandlePool<e3d::MeshTag, GpuMesh> meshes_;
     e3d::HandlePool<e3d::MaterialTag, GpuMaterial> materials_;

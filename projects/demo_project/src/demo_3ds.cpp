@@ -79,25 +79,13 @@ int main() {
     std::vector<std::string> warnings;
     if (loaded.ok) resolve_scene_assets(world, assets, warnings);
 
-    Font font;
-    {
-        Guid guid;
-        guid_from_string("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d", guid);
-        font.texture = assets.texture(guid, error);
-        font.texture_width = 128;
-        font.texture_height = 128;
-        font.glyph_width = 8;
-        font.glyph_height = 12;
-        font.columns = 16;
-        font.first_char = 32;
-    }
-
-    TetrisHud* hud = nullptr;
-    if (const EntityId hud_entity = find_entity(world, "Hud"); hud_entity != kInvalidEntity) {
-        hud = world.find_component<TetrisHud>(hud_entity);
-        if (hud != nullptr) {
-            hud->font = font;
-            hud->has_font = font.texture.valid();
+    bool font_ready = false;
+    for (const auto& slot : world.entities()) {
+        if (slot == nullptr) continue;
+        const UiCanvas* canvas = slot->find_component<UiCanvas>();
+        if (canvas != nullptr && canvas->font_texture.valid()) {
+            font_ready = true;
+            break;
         }
     }
 
@@ -272,7 +260,7 @@ int main() {
                           "audio_result=0x%08lx\n",
                           loaded.ok ? "ok" : "failed",
                           static_cast<unsigned>(loaded.warnings.size() + warnings.size()),
-                          count_scripts(world), manifest_ok ? 1 : 0, font.texture.valid() ? 1 : 0,
+                          count_scripts(world), manifest_ok ? 1 : 0, font_ready ? 1 : 0,
                           board_renderer != nullptr && board_renderer->mesh_handle.valid() ? 1 : 0,
                           next_renderer != nullptr && next_renderer->mesh_handle.valid() ? 1 : 0,
                           game != nullptr ? game->score : -1, game != nullptr ? game->level : -1,

@@ -2,6 +2,7 @@
 
 #include "e3d/core/math.hpp"
 #include "e3d/render/handle_pool.hpp"
+#include "t3x_decode.hpp"
 
 #include <GL/glew.h>
 
@@ -72,7 +73,20 @@ struct GpuMesh final {
 
 struct GpuTexture final {
     GLuint id = 0;
+    int width = 0;
+    int height = 0;
     bool valid = false;
+};
+
+struct SpriteVertex final {
+    float x = 0.0f;
+    float y = 0.0f;
+    float u = 0.0f;
+    float v = 0.0f;
+    float r = 1.0f;
+    float g = 1.0f;
+    float b = 1.0f;
+    float a = 1.0f;
 };
 
 struct GpuMaterial final {
@@ -127,7 +141,6 @@ void main() {
         const GLuint vertex = compile_shader(GL_VERTEX_SHADER, vertex_source);
         const GLuint fragment = compile_shader(GL_FRAGMENT_SHADER, fragment_source);
         if (vertex == 0 || fragment == 0) return false;
-
         program_ = glCreateProgram();
         glAttachShader(program_, vertex);
         glAttachShader(program_, fragment);
@@ -155,6 +168,65 @@ void main() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+        static const char* sprite_vertex_source = R"(#version 330 core
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in vec4 aColor;
+uniform vec2 uScreen;
+out vec2 vUv;
+out vec4 vColor;
+void main() {
+    vec2 ndc = vec2(aPos.x / uScreen.x * 2.0 - 1.0,
+                    1.0 - aPos.y / uScreen.y * 2.0);
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    vUv = aUv;
+    vColor = aColor;
+}
+)";
+
+        static const char* sprite_fragment_source = R"(#version 330 core
+in vec2 vUv;
+in vec4 vColor;
+uniform sampler2D uTex;
+out vec4 FragColor;
+void main() {
+    FragColor = vColor * texture(uTex, vUv);
+}
+)";
+
+        const GLuint sprite_vertex = compile_shader(GL_VERTEX_SHADER, sprite_vertex_source);
+        const GLuint sprite_fragment = compile_shader(GL_FRAGMENT_SHADER, sprite_fragment_source);
+        if (sprite_vertex == 0 || sprite_fragment == 0) return false;
+
+        sprite_program_ = glCreateProgram();
+        glAttachShader(sprite_program_, sprite_vertex);
+        glAttachShader(sprite_program_, sprite_fragment);
+        glLinkProgram(sprite_program_);
+        glDeleteShader(sprite_vertex);
+        glDeleteShader(sprite_fragment);
+
+        GLint sprite_linked = 0;
+        glGetProgramiv(sprite_program_, GL_LINK_STATUS, &sprite_linked);
+        if (sprite_linked == 0) return false;
+
+        u_sprite_screen_ = glGetUniformLocation(sprite_program_, "uScreen");
+        u_sprite_texture_ = glGetUniformLocation(sprite_program_, "uTex");
+
+        glGenVertexArrays(1, &sprite_vao_);
+        glGenBuffers(1, &sprite_vbo_);
+        glBindVertexArray(sprite_vao_);
+        glBindBuffer(GL_ARRAY_BUFFER, sprite_vbo_);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex),
+                              reinterpret_cast<void*>(offsetof(SpriteVertex, x)));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex),
+                              reinterpret_cast<void*>(offsetof(SpriteVertex, u)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex),
+                              reinterpret_cast<void*>(offsetof(SpriteVertex, r)));
+        glBindVertexArray(0);
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
         glDisable(GL_CULL_FACE);
@@ -171,10 +243,13 @@ void main() {
             if (mesh.ebo != 0) glDeleteBuffers(1, &mesh.ebo);
             mesh.vao = mesh.vbo = mesh.ebo = 0;
         });
-        textures_.for_each([](GpuTexture& texture) {
-            if (texture.id != 0) glDeleteTextures(1, &texture.id);
+        textures_.for_each([this](GpuTexture& texture) {
+            if (texture.id != 0 && texture.id != white_) glDeleteTextures(1, &texture.id);
         });
         if (program_ != 0) glDeleteProgram(program_);
+        if (sprite_program_ != 0) glDeleteProgram(sprite_program_);
+        if (sprite_vao_ != 0) glDeleteVertexArrays(1, &sprite_vao_);
+        if (sprite_vbo_ != 0) glDeleteBuffers(1, &sprite_vbo_);
         if (white_ != 0) glDeleteTextures(1, &white_);
     }
 
@@ -247,16 +322,45 @@ void main() {
 
     void destroy_material(MaterialHandle handle) override { materials_.remove(handle); }
 
-    TextureHandle create_texture(const TextureData&) override {
-        // The editor viewport does not decode .t3x yet; use a white fallback so
-        // textured materials render shaded rather than black.
+    TextureHandle create_texture(const TextureData& data) override {
+        desktop::DecodedImage image;
+        if (data.data == nullptr || !desktop::decode_t3x(data.data, data.size, image)) {
+            // Fall back to a white pixel so the scene still renders (e.g. when a
+            // texture uses ETC1, which the desktop backend does not decode).
+            GpuTexture fallback;
+            fallback.id = white_;
+            fallback.width = 1;
+            fallback.height = 1;
+            fallback.valid = true;
+            return textures_.add(fallback);
+        }
+
+        GLuint id = 0;
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_2D, id);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, image.width, image.height, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, image.rgba.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
         GpuTexture texture;
-        texture.id = white_;
+        texture.id = id;
+        texture.width = image.width;
+        texture.height = image.height;
         texture.valid = true;
         return textures_.add(texture);
     }
 
-    void destroy_texture(TextureHandle handle) override { textures_.remove(handle); }
+    void destroy_texture(TextureHandle handle) override {
+        GpuTexture* texture = textures_.get(handle);
+        if (texture != nullptr && texture->id != 0 && texture->id != white_) {
+            glDeleteTextures(1, &texture->id);
+        }
+        textures_.remove(handle);
+    }
 
     void set_viewport(int width, int height) override {
         width_ = width;
@@ -316,6 +420,15 @@ void main() {
                 glBindVertexArray(mesh->vao);
                 glDrawElements(GL_TRIANGLES, mesh->index_count, GL_UNSIGNED_SHORT, nullptr);
             }
+
+            // 2D UI/text pass, matching the 3DS backend's additive composition.
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+            glBlendFunc(GL_ONE, GL_ONE);
+            draw_sprites(list, camera.screen);
+            glDepthMask(GL_TRUE);
+            glEnable(GL_DEPTH_TEST);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         }
 
         glBindVertexArray(0);
@@ -323,7 +436,68 @@ void main() {
     }
 
 private:
+    void draw_sprites(const RenderList& list, Screen screen) {
+        const float native_width = screen == Screen::Top ? 400.0f : 320.0f;
+        const float scale_x = static_cast<float>(width_) / native_width;
+        const float scale_y = static_cast<float>(height_) / 240.0f;
+
+        std::vector<SpriteVertex> vertices;
+        vertices.reserve(256);
+
+        glUseProgram(sprite_program_);
+        glUniform2f(u_sprite_screen_, static_cast<float>(width_), static_cast<float>(height_));
+        glUniform1i(u_sprite_texture_, 0);
+        glBindVertexArray(sprite_vao_);
+        glBindBuffer(GL_ARRAY_BUFFER, sprite_vbo_);
+
+        GLuint bound_texture = 0;
+        auto flush = [&]() {
+            if (vertices.empty()) return;
+            glBufferData(GL_ARRAY_BUFFER,
+                         static_cast<GLsizeiptr>(vertices.size() * sizeof(SpriteVertex)),
+                         vertices.data(), GL_STREAM_DRAW);
+            glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+            vertices.clear();
+        };
+
+        for (const SpriteItem& sprite : list.sprites()) {
+            if (sprite.screen != screen) continue;
+
+            const GpuTexture* texture = textures_.get(sprite.texture);
+            const GLuint texture_id =
+                texture != nullptr && texture->valid ? texture->id : white_;
+            if (texture_id != bound_texture) {
+                flush();
+                bound_texture = texture_id;
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+            }
+
+            const float x0 = sprite.x * scale_x;
+            const float y0 = sprite.y * scale_y;
+            const float x1 = (sprite.x + sprite.width) * scale_x;
+            const float y1 = (sprite.y + sprite.height) * scale_y;
+            const Color& c = sprite.color;
+
+            auto add = [&](float x, float y, float u, float v) {
+                vertices.push_back(SpriteVertex{x, y, u, v, c.r, c.g, c.b, c.a});
+            };
+            add(x0, y0, sprite.u0, sprite.v0);
+            add(x1, y0, sprite.u1, sprite.v0);
+            add(x1, y1, sprite.u1, sprite.v1);
+            add(x0, y0, sprite.u0, sprite.v0);
+            add(x1, y1, sprite.u1, sprite.v1);
+            add(x0, y1, sprite.u0, sprite.v1);
+        }
+
+        flush();
+        glBindVertexArray(0);
+    }
+
     GLuint program_ = 0;
+    GLuint sprite_program_ = 0;
+    GLuint sprite_vao_ = 0;
+    GLuint sprite_vbo_ = 0;
     GLuint white_ = 0;
     int width_ = 0;
     int height_ = 0;
@@ -335,6 +509,8 @@ private:
     GLint u_use_texture_ = -1;
     GLint u_use_lighting_ = -1;
     GLint u_texture_ = -1;
+    GLint u_sprite_screen_ = -1;
+    GLint u_sprite_texture_ = -1;
     HandlePool<MeshTag, GpuMesh> meshes_;
     HandlePool<MaterialTag, GpuMaterial> materials_;
     HandlePool<TextureTag, GpuTexture> textures_;

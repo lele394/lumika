@@ -27,8 +27,9 @@ add_executable(lumika_editor
   ${PROJECT_SOURCE_DIR}/projects/demo_project/scripts/tetris_game.cpp
   ${PROJECT_SOURCE_DIR}/projects/demo_project/scripts/board_view.cpp
   ${PROJECT_SOURCE_DIR}/projects/demo_project/scripts/next_piece.cpp
-  ${PROJECT_SOURCE_DIR}/projects/demo_project/scripts/tetris_hud.cpp
+  ${PROJECT_SOURCE_DIR}/projects/demo_project/scripts/hud_binding.cpp
   ${PROJECT_SOURCE_DIR}/engine/platform/desktop/src/render_device_gl.cpp
+  ${PROJECT_SOURCE_DIR}/engine/platform/desktop/src/t3x_decode.cpp
 )
 
 target_include_directories(lumika_editor PRIVATE

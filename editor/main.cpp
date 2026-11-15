@@ -168,11 +168,19 @@ struct Editor final {
     RenderTarget scene_target;
     RenderTarget top_target;
     RenderTarget bottom_target;
+    RenderTarget ui_top_target;
+    RenderTarget ui_bottom_target;
 
     MeshHandle grid_mesh;
     MaterialHandle grid_material;
     bool grid_ready = false;
     bool show_camera_gizmos = true;
+
+    ScreenTarget ui_canvas = ScreenTarget::Top;
+    EntityId ui_drag_entity = kInvalidEntity;
+    Vec2 ui_drag_mouse{};
+    float ui_drag_x = 0.0f;
+    float ui_drag_y = 0.0f;
 
     // Play-in-editor: a serialized copy of the scene with scripts running.
     World play_world;
@@ -1136,6 +1144,7 @@ struct Editor final {
 
         RenderList list;
         build_screen_list(source, screen, list);
+        build_ui_render_list(source, list);
 
         if (!list.cameras().empty()) {
             glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
@@ -1198,6 +1207,226 @@ struct Editor final {
         ImGui::End();
     }
 
+    EntityId ui_canvas_entity(ScreenTarget screen) const {
+        const char* name = screen == ScreenTarget::Top ? "UiTop" : "UiBottom";
+        for (const auto& slot : world.entities()) {
+            if (slot != nullptr && slot->name == name) return slot->id;
+        }
+        return kInvalidEntity;
+    }
+
+    void add_ui_text() {
+        const EntityId canvas_id = ui_canvas_entity(ui_canvas);
+        if (canvas_id == kInvalidEntity) {
+            status = "add UiTop/UiBottom canvas first";
+            return;
+        }
+        const EntityId entity = world.create_entity("Text", canvas_id);
+        UiText* text = world.add_component<UiText>(entity);
+        if (text == nullptr) return;
+        text->text = "Text";
+        text->x = 16.0f;
+        text->y = 16.0f;
+        selected = entity;
+        dirty = true;
+        status = "added UI text";
+    }
+
+    EntityId hit_ui_element(float x, float y, ScreenTarget screen) const {
+        const auto& entities = world.entities();
+        for (auto it = entities.rbegin(); it != entities.rend(); ++it) {
+            const auto& slot = *it;
+            if (slot == nullptr) continue;
+
+            const UiCanvas* canvas = ui_canvas_of(world, *slot);
+            if (canvas == nullptr || canvas->screen != screen) continue;
+
+            float left = 0.0f;
+            float top = 0.0f;
+            float right = 0.0f;
+            float bottom = 0.0f;
+
+            if (const UiText* text = slot->find_component<UiText>(); text != nullptr) {
+                if (!text->visible) continue;
+                left = text->x;
+                top = text->y;
+                right = text->x + static_cast<float>(text->text.size()) *
+                                      static_cast<float>(canvas->glyph_width) * text->scale;
+                bottom = text->y + static_cast<float>(canvas->glyph_height) * text->scale;
+            } else if (const UiImage* image = slot->find_component<UiImage>(); image != nullptr) {
+                if (!image->visible) continue;
+                left = image->x;
+                top = image->y;
+                right = image->x + image->width;
+                bottom = image->y + image->height;
+            } else {
+                continue;
+            }
+
+            if (x >= left && x <= right && y >= top && y <= bottom) return slot->id;
+        }
+        return kInvalidEntity;
+    }
+
+    struct UiCanvasView final {
+        ImVec2 origin;
+        float scale = 1.0f;
+        float native_width = 400.0f;
+    };
+
+    UiCanvasView draw_ui_canvas_image(RenderTarget& target, ScreenTarget screen,
+                                      float available_width, float available_height) {
+        const float native_width = screen == ScreenTarget::Top ? 400.0f : 320.0f;
+        const float native_height = 240.0f;
+        target.ensure(static_cast<int>(native_width) * 2, static_cast<int>(native_height) * 2);
+
+        RenderList list;
+        CameraDesc camera;
+        camera.screen = screen == ScreenTarget::Top ? Screen::Top : Screen::Bottom;
+        camera.position = Vec3{0.0f, 0.0f, 1.0f};
+        camera.target = Vec3{0.0f, 0.0f, 0.0f};
+        camera.field_of_view = 50.0f;
+        camera.clear = Color{0.075f, 0.08f, 0.105f, 1.0f};
+        list.add_camera(camera);
+        build_ui_render_list(world, list);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
+        render->set_viewport(target.width, target.height);
+        render->execute(list);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        float width = available_width;
+        float height = width * native_height / native_width;
+        if (height > available_height) {
+            height = available_height;
+            width = height * native_width / native_height;
+        }
+
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const float x = cursor.x + (available_width - width) * 0.5f;
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddRectFilled(ImVec2(x, cursor.y), ImVec2(x + width, cursor.y + height),
+                                 IM_COL32(12, 14, 20, 255));
+        ImGui::SetCursorScreenPos(ImVec2(x, cursor.y));
+        ImGui::Image(target.texture_id(), ImVec2(width, height), ImVec2(0, 1), ImVec2(1, 0));
+        draw_list->AddRect(ImVec2(x, cursor.y), ImVec2(x + width, cursor.y + height),
+                           IM_COL32(70, 80, 100, 190));
+
+        return UiCanvasView{ImVec2(x, cursor.y), width / native_width, native_width};
+    }
+
+    void ui_canvas_interaction(const UiCanvasView& view, ScreenTarget screen) {
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 canvas_end(view.origin.x + view.native_width * view.scale,
+                                view.origin.y + 240.0f * view.scale);
+        const bool hovered = io.MousePos.x >= view.origin.x && io.MousePos.x <= canvas_end.x &&
+                             io.MousePos.y >= view.origin.y && io.MousePos.y <= canvas_end.y;
+
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            const float x = (io.MousePos.x - view.origin.x) / view.scale;
+            const float y = (io.MousePos.y - view.origin.y) / view.scale;
+            const EntityId hit = hit_ui_element(x, y, screen);
+            if (hit != kInvalidEntity) {
+                selected = hit;
+                ui_drag_entity = hit;
+                ui_drag_mouse = Vec2{io.MousePos.x, io.MousePos.y};
+                if (UiText* text = world.entity(hit)->find_component<UiText>(); text != nullptr) {
+                    ui_drag_x = text->x;
+                    ui_drag_y = text->y;
+                    status = "selected UI text";
+                } else if (UiImage* image = world.entity(hit)->find_component<UiImage>();
+                           image != nullptr) {
+                    ui_drag_x = image->x;
+                    ui_drag_y = image->y;
+                    status = "selected UI image";
+                }
+            }
+        }
+
+        if (ui_drag_entity != kInvalidEntity && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            Entity* entity = world.entity(ui_drag_entity);
+            if (entity != nullptr) {
+                const float dx = (io.MousePos.x - ui_drag_mouse.x) / view.scale;
+                const float dy = (io.MousePos.y - ui_drag_mouse.y) / view.scale;
+                if (UiText* text = entity->find_component<UiText>(); text != nullptr) {
+                    text->x = std::round(ui_drag_x + dx);
+                    text->y = std::round(ui_drag_y + dy);
+                    dirty = true;
+                } else if (UiImage* image = entity->find_component<UiImage>(); image != nullptr) {
+                    image->x = std::round(ui_drag_x + dx);
+                    image->y = std::round(ui_drag_y + dy);
+                    dirty = true;
+                }
+            }
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) ui_drag_entity = kInvalidEntity;
+
+        // Outline the selected element on this canvas.
+        Entity* selected_entity = world.entity(selected);
+        if (selected_entity != nullptr) {
+            const UiCanvas* canvas = ui_canvas_of(world, *selected_entity);
+            if (canvas != nullptr && canvas->screen == screen) {
+                if (const UiText* text = selected_entity->find_component<UiText>();
+                    text != nullptr && text->visible) {
+                    const ImVec2 a(view.origin.x + text->x * view.scale,
+                                   view.origin.y + text->y * view.scale);
+                    const ImVec2 b(
+                        a.x + static_cast<float>(text->text.size()) *
+                                  static_cast<float>(canvas->glyph_width) * text->scale *
+                                  view.scale,
+                        a.y + static_cast<float>(canvas->glyph_height) * text->scale * view.scale);
+                    ImGui::GetWindowDrawList()->AddRect(a, b, IM_COL32(255, 200, 80, 220), 0.0f,
+                                                        0, 1.5f);
+                } else if (const UiImage* image = selected_entity->find_component<UiImage>();
+                           image != nullptr && image->visible) {
+                    const ImVec2 a(view.origin.x + image->x * view.scale,
+                                   view.origin.y + image->y * view.scale);
+                    const ImVec2 b(a.x + image->width * view.scale,
+                                   a.y + image->height * view.scale);
+                    ImGui::GetWindowDrawList()->AddRect(a, b, IM_COL32(255, 200, 80, 220), 0.0f,
+                                                        0, 1.5f);
+                }
+            }
+        }
+    }
+
+    void draw_ui_designer() {
+        if (!ImGui::Begin("UI")) {
+            ImGui::End();
+            return;
+        }
+
+        if (ImGui::Button("Add Text")) add_ui_text();
+        ImGui::SameLine();
+
+        const char* const canvas_names[] = {"Top", "Bottom"};
+        int canvas_index = ui_canvas == ScreenTarget::Top ? 0 : 1;
+        ImGui::SetNextItemWidth(110.0f);
+        if (ImGui::Combo("##canvas", &canvas_index, canvas_names, 2)) {
+            ui_canvas = canvas_index == 0 ? ScreenTarget::Top : ScreenTarget::Bottom;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("LMB select / drag  |  edit text and colors in Inspector");
+
+        ImGui::Separator();
+
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const float label_height = ImGui::GetTextLineHeightWithSpacing();
+        const float half = std::max(52.0f, (avail.y - label_height * 2.0f - 16.0f) * 0.5f - 6.0f);
+
+        ImGui::Text("Top screen  400x240");
+        UiCanvasView top = draw_ui_canvas_image(ui_top_target, ScreenTarget::Top, avail.x, half);
+        ui_canvas_interaction(top, ScreenTarget::Top);
+
+        ImGui::Dummy(ImVec2(0.0f, 4.0f));
+        ImGui::Text("Bottom screen  320x240");
+        UiCanvasView bottom =
+            draw_ui_canvas_image(ui_bottom_target, ScreenTarget::Bottom, avail.x, half);
+        ui_canvas_interaction(bottom, ScreenTarget::Bottom);
+
+        ImGui::End();
+    }
+
     void draw_menu() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu("File")) {
@@ -1228,6 +1457,7 @@ struct Editor final {
                 ImGui::Separator();
                 ImGui::MenuItem("Camera Gizmos", nullptr, &show_camera_gizmos);
                 if (ImGui::MenuItem("Focus Scene View", "F7")) ImGui::SetWindowFocus("Scene");
+                if (ImGui::MenuItem("Focus UI Designer", "F8")) ImGui::SetWindowFocus("UI");
                 if (ImGui::MenuItem("Focus Game View", "F6")) ImGui::SetWindowFocus("Game");
                 ImGui::EndMenu();
             }
@@ -1279,6 +1509,7 @@ struct Editor final {
             ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.45f, nullptr, &left_top);
 
         ImGui::DockBuilderDockWindow("Scene", center);
+        ImGui::DockBuilderDockWindow("UI", center);
         ImGui::DockBuilderDockWindow("Game", center);
         ImGui::DockBuilderDockWindow("Hierarchy", left_top);
         ImGui::DockBuilderDockWindow("Assets", left_bottom);
@@ -1310,6 +1541,7 @@ struct Editor final {
         }
 
         draw_scene();
+        draw_ui_designer();
         draw_game_view();
         draw_hierarchy();
         draw_inspector();
@@ -1329,6 +1561,9 @@ struct Editor final {
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F7) && !ImGui::GetIO().WantTextInput) {
             ImGui::SetWindowFocus("Scene");
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F8) && !ImGui::GetIO().WantTextInput) {
+            ImGui::SetWindowFocus("UI");
         }
     }
 };

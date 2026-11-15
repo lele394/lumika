@@ -6,6 +6,7 @@
 #include "e3d/render/types.hpp"
 
 #include <span>
+#include <string>
 
 namespace e3d {
 
@@ -60,6 +61,60 @@ public:
     bool loop = false;
 
     ClipHandle clip_handle;
+
+    static std::span<const PropDesc> properties();
+};
+
+/// Screen-space UI root. Descendant UiText/UiImage components inherit its
+/// screen and bitmap font.
+class UiCanvas final : public Component {
+public:
+    E3D_COMPONENT(UiCanvas, Component)
+
+    ScreenTarget screen = ScreenTarget::Top;
+    AssetRef font;
+    int glyph_width = 8;
+    int glyph_height = 12;
+    int columns = 16;
+    int first_char = 32;
+    int atlas_width = 128;
+    int atlas_height = 128;
+
+    // Resolved at runtime; not serialized.
+    TextureHandle font_texture;
+
+    static std::span<const PropDesc> properties();
+};
+
+/// Bitmap text element in UI pixel coordinates (origin top-left).
+class UiText final : public Component {
+public:
+    E3D_COMPONENT(UiText, Component)
+
+    std::string text = "Text";
+    float x = 8.0f;
+    float y = 8.0f;
+    float scale = 1.0f;
+    Color color{1.0f, 1.0f, 1.0f, 1.0f};
+    bool visible = true;
+
+    static std::span<const PropDesc> properties();
+};
+
+/// Textured rectangle in UI pixel coordinates.
+class UiImage final : public Component {
+public:
+    E3D_COMPONENT(UiImage, Component)
+
+    AssetRef texture;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 64.0f;
+    float height = 64.0f;
+    Color color{1.0f, 1.0f, 1.0f, 1.0f};
+    bool visible = true;
+
+    TextureHandle texture_handle;
 
     static std::span<const PropDesc> properties();
 };

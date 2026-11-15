@@ -11,6 +11,7 @@ add_executable(e3d_tests
   test_scripts.cpp
   test_tetris.cpp
   test_types.cpp
+  test_ui.cpp
   test_world.cpp
   ${PROJECT_SOURCE_DIR}/projects/demo_project/scripts/tetris_game.cpp
 )

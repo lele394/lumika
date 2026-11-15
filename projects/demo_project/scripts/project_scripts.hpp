@@ -61,19 +61,31 @@ public:
     void on_update(float delta_time) override;
 };
 
-class TetrisHud final : public e3d::ScriptComponent {
+class HudBinding final : public e3d::ScriptComponent {
 public:
-    E3D_COMPONENT(TetrisHud, e3d::ScriptComponent)
+    E3D_COMPONENT(HudBinding, e3d::ScriptComponent)
 
     bool show_controls = true;
 
-    e3d::Font font;
-    bool has_font = false;
-    TetrisGame* game = nullptr;
-
     static std::span<const e3d::PropDesc> properties();
     void on_start() override;
-    void on_render(e3d::RenderList& list) override;
+    void on_update(float delta_time) override;
+
+private:
+    TetrisGame* game = nullptr;
+    e3d::UiText* score = nullptr;
+    e3d::UiText* level_top = nullptr;
+    e3d::UiText* level_bottom = nullptr;
+    e3d::UiText* lines_top = nullptr;
+    e3d::UiText* lines_bottom = nullptr;
+    e3d::UiText* combo_top = nullptr;
+    e3d::UiText* combo_bottom = nullptr;
+    e3d::UiText* paused = nullptr;
+    e3d::UiText* game_over = nullptr;
+    e3d::UiText* restart = nullptr;
+    e3d::UiText* controls[3] = {nullptr, nullptr, nullptr};
+
+    [[nodiscard]] e3d::UiText* find_text(const char* name) const;
 };
 
 void register_project_components();

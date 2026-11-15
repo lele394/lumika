@@ -177,15 +177,17 @@ unchanged.
 ### Desktop backend
 
 `engine/platform/desktop` provides `create_render_device_gl()`, an OpenGL 3.3 implementation of the
-same `RenderDevice` interface (shaders, meshes, materials, viewport). The editor uses it to draw the
-scene into a framebuffer texture that Dear ImGui displays, so the viewport is depth-correct and
-aspect-correct without a second renderer. Textures currently fall back to white in the editor until
-`.t3x` decoding lands on the host.
+same `RenderDevice` interface (shaders, meshes, materials, sprites, viewport). The editor uses it to
+draw the scene into a framebuffer texture that Dear ImGui displays, so the viewport is depth-correct
+and aspect-correct without a second renderer. `.t3x` textures are decoded on the host (RGBA8, RGB8,
+RGBA5551, RGB565, RGBA4444, LA8, HILO8, L8, A8, LA44, L4, A4; RLE, LZ10 and LZ11 compression); ETC1
+falls back to white.
 
-The editor's in-editor Play builds a serialized copy of the scene, runs the registered scripts on it
-through `Runtime`, and previews each on-screen camera by rebuilding a `RenderList` from the camera
-component (field of view, near/far planes, layer mask), mirroring `build_render_list` for one screen.
-Sprite rendering is not implemented in the desktop backend, so HUD text is absent from previews.
+The desktop backend also implements the sprite pass used by text and UI, with the same pixel-space
+coordinates, additive blending and screen split as the 3DS backend. The in-editor Play builds a
+serialized copy of the scene, runs the registered scripts through `Runtime`, and previews each
+on-screen camera by rebuilding a `RenderList` from the camera component (field of view, near/far
+planes, layer mask), mirroring `build_render_list` for one screen.
 
 ### Materials
 
@@ -230,15 +232,31 @@ font.columns = 16;         font.first_char = 32;
 draw_text(list, font, Screen::Bottom, 8, 8, 1.0f, Color{1,1,1,1}, "SCORE 1000");
 ```
 
-Sprites are drawn after 3D using an orthographic pass. The current implementation composites
-additively over a black-backed atlas; alpha-blended UI can replace it later.
+Sprites are drawn after 3D using an orthographic pass. The 3DS and desktop backends both composite
+additively over a black-backed atlas.
+
+### UI components
+
+`build_render_list` appends the UI pass automatically:
+
+```cpp
+// UiCanvas ancestor: screen + font atlas
+// UiText child:   text, x, y, scale, color, visible
+// UiImage child:  texture, x, y, width, height, color, visible
+```
+
+`build_ui_render_list(world, list)` walks each element's ancestors for a `UiCanvas`, builds a `Font`
+from its metrics and emits sprites for the canvas screen. UI positions are pixels with the origin at
+the top-left of the 400x240 (top) or 320x240 (bottom) target. Extend or query labels from scripts by
+finding the entity and writing `UiText::text` (the demo's `HudBinding` does this).
 
 ## 7. Assets
 
 - `AssetDb` loads `manifest.json`: `guid`, `type` (`mesh`, `texture`, `material`, `audio`, `font`),
   `path`.
 - `AssetManager` resolves GUIDs to device handles and caches them.
-- `resolve_scene_assets` walks `MeshRenderer`/`AudioSource` and fills runtime handles.
+- `resolve_scene_assets` walks `MeshRenderer`/`AudioSource`/`UiCanvas`/`UiImage` and fills runtime
+  handles.
 - Loaders are synchronous; do not load during `on_update` in the steady state.
 - Cooked formats: `.cmesh` (see `load_cmesh`), `.t3x` (tex3ds), `.mat.json`, PCM16 `.wav`.
 

@@ -115,6 +115,7 @@ It loads `projects/demo_project` on start and docks panels like Unity:
 | Panel | What it does |
 | --- | --- |
 | Scene | Live OpenGL viewport of the scene with a ground grid, camera frustum gizmos, selection and translate gizmos |
+| UI | Canvas designer for the Top (400x240) and Bottom (320x240) UI layers; select/drag text, add text |
 | Game | Tab beside Scene showing the Top (400x240) and Bottom (320x240) camera views |
 | Hierarchy | Entity tree, select, create (`New`), delete |
 | Inspector | Name, transform, components and schema-driven properties, add/remove components |
@@ -132,12 +133,27 @@ Scene view controls:
 | Left-click | Select the nearest entity; click a gizmo handle and drag to move it on that axis |
 | `F` | Frame the selected entity |
 | `F5` | Play/stop the scene in the editor |
-| `F6` / `F7` | Focus the Game / Scene tab |
+| `F6` / `F7` / `F8` | Focus the Game / Scene / UI tab |
 
 `View → Camera Gizmos` toggles the near/far frustum wireframes for every `Camera` component (the
 selected camera is highlighted). `View → Reset Layout` rebuilds the default dockspace and
 `View → Reset Camera` returns to the start pose. The viewport renders through the same `RenderList`
-as the 3DS, using the desktop OpenGL 3.3 backend in `engine/platform/desktop`.
+as the 3DS, using the desktop OpenGL 3.3 backend in `engine/platform/desktop` (including `.t3x`
+decoding and the sprite/text pass).
+
+### UI designer
+
+UI is scene data, not hardcoded drawing:
+
+- `UiCanvas` on an entity selects the screen and bitmap font (texture asset + glyph metrics).
+- `UiText` children hold `text`, `x`, `y`, `scale`, `color` and `visible` in screen pixels.
+- `UiImage` children draw a textured rectangle.
+
+The **UI** tab renders both canvases through the real sprite pass. Click a text element to select it,
+drag to move it (1px snapping), and use the Inspector to edit the string, scale, tint or visibility;
+*Add Text* creates a new `UiText` under the chosen canvas. Because `HudBinding` writes dynamic values
+(score, level, lines, combo, pause/game-over) into scene-owned labels, what you design is what the
+3DS renders.
 
 ### Play and camera preview
 
@@ -147,9 +163,9 @@ next piece) update live, and the Scene view switches to the play copy while it r
 stops and restores the authored scene.
 
 The **Game** tab renders each screen's `Camera` component with its field of view, near/far planes and
-layer mask, so it is representative of what the console will show. The difference: the desktop
-backend does not decode `.t3x` textures or draw sprites yet, so sprite-based HUD text and textured
-backdrops are missing from the preview.
+layer mask, so it is representative of what the console will show. The desktop backend decodes
+`.t3x` textures and draws the sprite/text pass, so the HUD and textured sprites appear in the preview
+too.
 
 Editing model:
 
@@ -163,10 +179,11 @@ Editing model:
   Azahar.
 
 Limitations: the editor links the demo project's scripts directly (a generic per-project registry is
-next); play-in-editor runs scripts and dynamic meshes but has no 3DS input, audio, sprite/HUD or
-texture decoding; gizmos are translate-only; there is no undo/redo; `.prefab.json` files are found by
-scanning `assets/prefabs/`, not through the manifest; dynamic meshes created while playing are not
-freed when you stop.
+next); play-in-editor runs scripts and dynamic meshes but has no 3DS input or audio; the desktop
+texture decoder supports the uncompressed tex3ds formats but not ETC1/ETC1A4 (those fall back to
+white); gizmos are translate-only; there is no undo/redo; `.prefab.json` files are found by scanning
+`assets/prefabs/`, not through the manifest; dynamic meshes created while playing are not freed when
+you stop.
 
 
 

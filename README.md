@@ -15,10 +15,12 @@ prefabs, save the scene, and build/launch Azahar.
 ```
 
 Unity-style docked panels: a live **Scene** viewport (free-fly camera, ground grid, click selection,
-translate gizmos, camera frustum gizmos), a **Game** tab with Top/Bottom camera previews, Hierarchy,
-Inspector, a tagged/fuzzy-search **Assets** index, and Console. `F5` plays the scene in the editor
-with scripts running (dynamic meshes such as the board update live); `Build -> Playtest` compiles the
-3DS target and launches Azahar. See `docs/10-getting-started.md` §4b.
+translate gizmos, camera frustum gizmos), a **UI** designer tab for the Top/Bottom UI canvases, a
+**Game** tab with Top/Bottom camera previews, Hierarchy, Inspector, a tagged/fuzzy-search **Assets**
+index, and Console. `.t3x` textures are decoded on the host and the desktop renderer draws both 3D
+meshes and the sprite/text pass, so previews match the console (including the HUD). `F5` plays the
+scene in the editor with scripts running (dynamic meshes such as the board update live);
+`Build -> Playtest` compiles the 3DS target and launches Azahar. See `docs/10-getting-started.md` §4b.
 
 ## Audio
 
@@ -48,10 +50,11 @@ Without it `ndspInit()` fails with `0xD880A7FA` and the engine runs silently.
 | Check | Result |
 | --- | --- |
 | 3DS build | `tetris3d`, `scene_check`, `render_check`, `demo3d` via devkitARM r68, libctru 2.7.1 |
-| 3DS run | Citro2D smoke app; `scene_check` round-trips scenes; `render_check` lit textured cube |
+| 3DS run | `demo3d` renders both screens; UI text is data-driven (`UiCanvas`/`UiText`) |
 | Tetris | Scene + manifest + 4 scripts; 1 piece locked, score 34, 4 board cells, 60 FPS |
-| HUD | Bitmap-font text on both screens, additive blending, upright glyphs |
-| Host tests | 41 test cases / 314 assertions pass via CTest |
+| UI | Bitmap-font text via scene components; same pass on 3DS and desktop; additive blending |
+| Desktop | `.t3x` decode (RGBA8/RGB8/5551/565/4444/LA/L/A + RLE/LZ10/LZ11) and sprite pass |
+| Host tests | 51 test cases / 369 assertions pass via CTest |
 | Audio | NDSP works in Azahar with a 0-byte `dspfirm.cdc`; clip, voice and playback verified |
 
 ## What works now
@@ -64,19 +67,21 @@ Without it `ndspInit()` fails with `0xD880A7FA` and the engine runs silently.
 - Asset pipeline: `meshc` (OBJ → `.cmesh`), `tex3ds` (PNG → `.t3x`), manifest, material JSON, RomFS.
 - Renderer: render list, Citro3D device, two targets, per-camera perspective, depth, layer masks,
   `unlit_color` and `lit_textured` shaders, textures, mesh upload with handle pools.
+- Desktop renderer: OpenGL 3.3 backend used by the editor, `.t3x` decoding, sprite/text pass.
 - Runtime: script lifecycle, fixed 60 Hz step, portable input state, audio API, deterministic dispatch.
 - Project scripts are plain C++ components compiled into the game; the scene references them by type.
-- 2D HUD: bitmap font atlas, `draw_text`, per-screen sprite batching with additive blending.
+- Data-driven UI: `UiCanvas` (screen + bitmap font), `UiText`, `UiImage`; `build_ui_render_list`
+  emits the same sprites on both platform backends.
 - Tetris: 7-bag, rotation with kicks, DAS, soft/hard drop, lock delay, line clears, scoring, pause and
-  restart; board and next piece are dynamic meshes; HUD shows score, level and lines.
+  restart; board and next piece are dynamic meshes; `HudBinding` updates scene-owned UI labels.
 
 ## Layout
 
 | Path | Purpose | Status |
 | --- | --- | --- |
-| `engine/` | Core: scene, reflection, assets, render list, runtime, audio API | M3 |
+| `engine/` | Core: scene, reflection, assets, render list, runtime, audio API, UI | M3 |
 | `engine/platform/3ds/` | Citro3D device, NDSP audio, HID, RomFS | M3 |
-| `engine/platform/desktop/` | GLFW + OpenGL 3.3 + miniaudio backend | planned |
+| `engine/platform/desktop/` | OpenGL 3.3 device + t3x decoder for the editor | M6 |
 | `editor/` | Dear ImGui desktop editor | M6 MVP |
 | `projects/demo_project/` | Scene, assets, scripts, playable Tetris demo | M5 |
 | `tools/` | `scene_dump`, `meshc`, `cook.ps1`, build/run scripts | M2 |
