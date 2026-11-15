@@ -1,5 +1,10 @@
 # Lumika
 
+> This project is entirely vibe-coded with deepseek and opencode. I have no plans to actually get this to production grade software. Nor do I claim it to be anywhere near optimal. I have no idea when I'll be working on it, as it was more of an experiment. That being said, I do believe the underlying deisgn is strong. Feel free to fork, extend, and submit PRs. I love my 3DS, and I'd love to see what we could do with such software. Shoutout to the people behind DevkitPro and the toolchain in general. And thanks to the Azahar team for their emulator.
+>
+> Cheers!
+>      - Léo
+
 A small, barebones, data-driven game runtime for the Nintendo 3DS / New 3DS, with a desktop editor.
 Working title; nothing here is stable yet.
 
