@@ -15,9 +15,10 @@ prefabs, save the scene, and build/launch Azahar.
 ```
 
 Unity-style docked panels: a live **Scene** viewport (free-fly camera, ground grid, click selection,
-translate gizmos), Hierarchy, Inspector, a tagged/fuzzy-search **Assets** index, and Console.
-`Build -> Playtest` compiles the 3DS target and launches Azahar. See
-`docs/10-getting-started.md` §4b.
+translate gizmos, camera frustum gizmos), a **Game** tab with Top/Bottom camera previews, Hierarchy,
+Inspector, a tagged/fuzzy-search **Assets** index, and Console. `F5` plays the scene in the editor
+with scripts running (dynamic meshes such as the board update live); `Build -> Playtest` compiles the
+3DS target and launches Azahar. See `docs/10-getting-started.md` §4b.
 
 ## Audio
 

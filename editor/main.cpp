@@ -31,6 +31,45 @@ using namespace e3d;
 
 namespace {
 
+/// Offscreen color+depth target displayed in an ImGui window.
+struct RenderTarget final {
+    GLuint framebuffer = 0;
+    GLuint color = 0;
+    GLuint depth = 0;
+    int width = 0;
+    int height = 0;
+
+    void ensure(int w, int h) {
+        if (framebuffer == 0) {
+            glGenFramebuffers(1, &framebuffer);
+            glGenTextures(1, &color);
+            glGenRenderbuffers(1, &depth);
+        }
+        if (w == width && h == height) return;
+        width = w;
+        height = h;
+
+        glBindTexture(GL_TEXTURE_2D, color);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glBindRenderbuffer(GL_RENDERBUFFER, depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    [[nodiscard]] ImTextureID texture_id() const noexcept {
+        return static_cast<ImTextureID>(static_cast<uintptr_t>(color));
+    }
+};
+
 std::vector<std::string>& log_lines() {
     static std::vector<std::string> lines;
     return lines;
@@ -120,20 +159,27 @@ struct Editor final {
     bool dirty = false;
     bool project_loaded = false;
     bool layout_built = false;
+    bool layout_from_ini = false;
 
     Vec3 cameraPosition{0.0f, 2.0f, 28.0f};
     float cameraYaw = -90.0f;
     float cameraPitch = 0.0f;
 
-    GLuint framebuffer = 0;
-    GLuint colorTexture = 0;
-    GLuint depthBuffer = 0;
-    int framebufferWidth = 0;
-    int framebufferHeight = 0;
+    RenderTarget scene_target;
+    RenderTarget top_target;
+    RenderTarget bottom_target;
 
     MeshHandle grid_mesh;
     MaterialHandle grid_material;
     bool grid_ready = false;
+    bool show_camera_gizmos = true;
+
+    // Play-in-editor: a serialized copy of the scene with scripts running.
+    World play_world;
+    InputState play_input;
+    RenderList play_list;
+    std::unique_ptr<Runtime> play_runtime;
+    bool playing = false;
 
     int dragAxis = -1;
     Vec3 dragStart{};
@@ -148,6 +194,7 @@ struct Editor final {
     std::vector<PrefabFile> prefabs;
 
     bool load_project(const std::string& dir) {
+        stop_play();
         projectDir = dir;
         scenePath = (fs::path(dir) / "scenes" / "main.scene.json").string();
         assetsDir = (fs::path(dir) / "assets").string();
@@ -633,34 +680,6 @@ struct Editor final {
         return true;
     }
 
-    void ensure_framebuffer(int width, int height) {
-        if (framebuffer == 0) {
-            glGenFramebuffers(1, &framebuffer);
-            glGenTextures(1, &colorTexture);
-            glGenRenderbuffers(1, &depthBuffer);
-        }
-        if (width == framebufferWidth && height == framebufferHeight) return;
-        framebufferWidth = width;
-        framebufferHeight = height;
-
-        glBindTexture(GL_TEXTURE_2D, colorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                     nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,
-                                  depthBuffer);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
     void pick_at(ImVec2 mouse, ImVec2 origin, ImVec2 size) {
         EntityId best = kInvalidEntity;
         float best_distance = 36.0f;
@@ -737,6 +756,205 @@ struct Editor final {
         grid_material = render->create_material(material);
     }
 
+    void start_play() {
+        if (playing) return;
+
+        std::string error;
+        const std::string text = e3d::save_scene(world, error);
+        if (text.empty()) {
+            status = "play failed: " + error;
+            return;
+        }
+
+        play_world.clear();
+        const SceneLoadResult loaded = load_scene(play_world, text);
+        if (!loaded.ok) {
+            status = "play failed: " + loaded.error;
+            return;
+        }
+
+        if (assetManager) {
+            std::vector<std::string> warnings;
+            resolve_scene_assets(play_world, *assetManager, warnings);
+            for (const std::string& warning : warnings) log_lines().push_back("[play] " + warning);
+        }
+
+        play_input = InputState{};
+        play_list.clear();
+
+        ScriptContext& context = script_context();
+        context.world = &play_world;
+        context.input = &play_input;
+        context.audio = nullptr;
+        context.render_list = &play_list;
+        context.render_device = render.get();
+        context.delta_time = 0.0f;
+        context.fixed_delta_time = 1.0f / 60.0f;
+
+        play_runtime = std::make_unique<Runtime>(play_world, nullptr);
+        play_runtime->set_render_list(&play_list);
+        play_runtime->set_render_device(render.get());
+
+        playing = true;
+        status = "play: scripts running";
+    }
+
+    void stop_play() {
+        if (!playing) return;
+        shutdown_scripts(play_world);
+        play_runtime.reset();
+        play_world.clear();
+        play_list.clear();
+        playing = false;
+
+        ScriptContext& context = script_context();
+        context.world = &world;
+        context.input = nullptr;
+        context.audio = nullptr;
+        context.render_list = nullptr;
+        context.render_device = render.get();
+        status = "play stopped";
+    }
+
+    /// Builds a render list for one screen camera of `source`, matching the
+    /// runtime's camera/layer filtering so the preview matches the console.
+    void build_screen_list(const World& source, ScreenTarget screen, RenderList& list) const {
+        list.clear();
+
+        const Environment* environment = nullptr;
+        for (const auto& slot : source.entities()) {
+            if (slot == nullptr) continue;
+            if (const Environment* found = slot->find_component<Environment>(); found != nullptr) {
+                environment = found;
+                break;
+            }
+        }
+        const Color clear = environment != nullptr ? environment->clear_color
+                                                   : Color{0.04f, 0.05f, 0.08f, 1.0f};
+
+        const Entity* camera_entity = nullptr;
+        const Camera* camera = nullptr;
+        for (const auto& slot : source.entities()) {
+            if (slot == nullptr) continue;
+            const Camera* found = slot->find_component<Camera>();
+            if (found != nullptr && found->screen == screen) {
+                camera_entity = slot.get();
+                camera = found;
+                break;
+            }
+        }
+        if (camera == nullptr) return;
+
+        CameraDesc desc;
+        desc.screen = camera->screen == ScreenTarget::Top ? Screen::Top : Screen::Bottom;
+        desc.field_of_view = camera->field_of_view;
+        desc.near_plane = camera->near_plane;
+        desc.far_plane = camera->far_plane;
+        desc.stereo = camera->stereo;
+        desc.cull_mask = static_cast<u32>(camera->cull_mask);
+        desc.clear = clear;
+
+        const Mat4& matrix = camera_entity->world;
+        desc.position = Vec3{matrix.m[12], matrix.m[13], matrix.m[14]};
+        desc.up = normalize(Vec3{matrix.m[4], matrix.m[5], matrix.m[6]});
+        desc.target = desc.position - normalize(Vec3{matrix.m[8], matrix.m[9], matrix.m[10]});
+
+        const u8 index = list.add_camera(desc);
+        const u32 mask = desc.cull_mask;
+
+        for (const auto& slot : source.entities()) {
+            if (slot == nullptr) continue;
+            const MeshRenderer* renderer = slot->find_component<MeshRenderer>();
+            if (renderer == nullptr) continue;
+            if (!renderer->mesh_handle.valid() || !renderer->material_handle.valid()) continue;
+
+            const u32 layer = static_cast<u32>(renderer->layer) & 31u;
+            if ((mask & (1u << layer)) == 0) continue;
+            list.draw(index, renderer->mesh_handle, renderer->material_handle, slot->world);
+        }
+    }
+
+    void draw_camera_gizmos(ImDrawList* draw_list, ImVec2 origin, ImVec2 size) {
+        for (const auto& slot : world.entities()) {
+            if (slot == nullptr) continue;
+            const Camera* camera = slot->find_component<Camera>();
+            if (camera == nullptr) continue;
+
+            const Mat4& matrix = slot->world;
+            const Vec3 position{matrix.m[12], matrix.m[13], matrix.m[14]};
+            const Vec3 right = normalize(Vec3{matrix.m[0], matrix.m[1], matrix.m[2]});
+            const Vec3 up = normalize(Vec3{matrix.m[4], matrix.m[5], matrix.m[6]});
+            const Vec3 forward = normalize(Vec3{matrix.m[8], matrix.m[9], matrix.m[10]}) * -1.0f;
+
+            const float aspect =
+                camera->screen == ScreenTarget::Top ? 400.0f / 240.0f : 320.0f / 240.0f;
+            const float near_half_h = std::tan(camera->field_of_view * kDegToRad * 0.5f) *
+                                      camera->near_plane;
+            const float near_half_w = near_half_h * aspect;
+            const float far_half_h = std::tan(camera->field_of_view * kDegToRad * 0.5f) *
+                                     camera->far_plane;
+            const float far_half_w = far_half_h * aspect;
+
+            Vec3 near_corners[4];
+            Vec3 far_corners[4];
+            const Vec3 near_center = position + forward * camera->near_plane;
+            const Vec3 far_center = position + forward * camera->far_plane;
+            const int signs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+            for (int i = 0; i < 4; ++i) {
+                const Vec3 offset = right * (signs[i][0] * near_half_w) +
+                                    up * (signs[i][1] * near_half_h);
+                near_corners[i] = near_center + offset;
+                far_corners[i] = far_center +
+                                 right * (signs[i][0] * far_half_w) +
+                                 up * (signs[i][1] * far_half_h);
+            }
+
+            const bool is_selected = slot->id == selected;
+            const ImU32 color = is_selected ? IM_COL32(255, 208, 80, 220)
+                                            : IM_COL32(140, 155, 180, 120);
+            const ImU32 far_color = is_selected ? IM_COL32(255, 208, 80, 120)
+                                                : IM_COL32(140, 155, 180, 55);
+
+            auto line = [&](Vec3 a, Vec3 b, ImU32 line_color, float thickness) {
+                ImVec2 pa;
+                ImVec2 pb;
+                if (!project(a, origin, size, pa) || !project(b, origin, size, pb)) return;
+                draw_list->AddLine(pa, pb, line_color, thickness);
+            };
+
+            // Near rectangle, far rectangle and the four frustum edges.
+            for (int i = 0; i < 4; ++i) {
+                line(near_corners[i], near_corners[(i + 1) % 4], color, 1.6f);
+                line(far_corners[i], far_corners[(i + 1) % 4], far_color, 1.2f);
+                line(near_corners[i], far_corners[i], far_color, 1.0f);
+            }
+
+            // Small camera body: a square facing the lens plus an up marker.
+            const float body = 0.55f;
+            const Vec3 body_center = position + forward * -0.35f;
+            Vec3 body_corners[4];
+            for (int i = 0; i < 4; ++i) {
+                body_corners[i] = body_center + right * (signs[i][0] * body * 0.5f) +
+                                  up * (signs[i][1] * body * 0.5f);
+            }
+            for (int i = 0; i < 4; ++i) {
+                line(body_corners[i], body_corners[(i + 1) % 4], color, 1.6f);
+                line(body_corners[i], near_corners[(i + 1) % 4], color, 1.0f);
+            }
+            line(body_center + up * 0.5f, body_center + up * 1.1f, color, 1.6f);
+
+            ImVec2 label_pos;
+            if (project(body_center + up * 1.35f, origin, size, label_pos)) {
+                const ImVec2 text_size = ImGui::CalcTextSize(slot->name.c_str());
+                draw_list->AddRectFilled(
+                    ImVec2(label_pos.x - 3.0f, label_pos.y - 2.0f),
+                    ImVec2(label_pos.x + text_size.x + 3.0f, label_pos.y + text_size.y + 2.0f),
+                    IM_COL32(10, 12, 18, 190), 3.0f);
+                draw_list->AddText(label_pos, color, slot->name.c_str());
+            }
+        }
+    }
+
     void draw_scene() {
         if (!ImGui::Begin("Scene")) {
             ImGui::End();
@@ -794,7 +1012,7 @@ struct Editor final {
             }
         }
 
-        ensure_framebuffer(width, height);
+        scene_target.ensure(width, height);
         ensure_grid();
 
         RenderList list;
@@ -813,7 +1031,8 @@ struct Editor final {
             list.draw(camera_index, grid_mesh, grid_material, mat4_identity());
         }
 
-        for (const auto& slot : world.entities()) {
+        const World& view_world = playing ? play_world : world;
+        for (const auto& slot : view_world.entities()) {
             if (slot == nullptr) continue;
             MeshRenderer* renderer = slot->find_component<MeshRenderer>();
             if (renderer == nullptr) continue;
@@ -821,21 +1040,25 @@ struct Editor final {
             list.draw(camera_index, renderer->mesh_handle, renderer->material_handle, slot->world);
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, scene_target.framebuffer);
         render->set_viewport(width, height);
         render->execute(list);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
-        draw_list->AddImage(static_cast<ImTextureID>(static_cast<uintptr_t>(colorTexture)),
-                            origin, ImVec2(origin.x + size.x, origin.y + size.y), ImVec2(0, 1),
+        draw_list->AddImage(scene_target.texture_id(), origin,
+                            ImVec2(origin.x + size.x, origin.y + size.y), ImVec2(0, 1),
                             ImVec2(1, 0));
         draw_list->AddText(ImVec2(origin.x + 10.0f, origin.y + size.y - 22.0f),
                            IM_COL32(150, 160, 180, 170),
                            "RMB look  |  WASD / arrows move  |  Shift speed  |  F focus  |  LMB select + drag gizmo");
 
+        if (show_camera_gizmos && !playing) {
+            draw_camera_gizmos(draw_list, origin, size);
+        }
+
         // Gizmo + click selection.
-        Entity* selected_entity = world.entity(selected);
+        Entity* selected_entity = playing ? nullptr : world.entity(selected);
         if (selected_entity != nullptr) {
             const Vec3 origin_world{selected_entity->world.m[12], selected_entity->world.m[13],
                                     selected_entity->world.m[14]};
@@ -897,9 +1120,80 @@ struct Editor final {
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) dragAxis = -1;
         }
 
-        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && dragAxis < 0) {
+        if (!playing && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && dragAxis < 0) {
             pick_at(io.MousePos, origin, size);
         }
+
+        ImGui::End();
+    }
+
+    void draw_preview(RenderTarget& target, const World& source, ScreenTarget screen,
+                      float available_width, float available_height) {
+        constexpr int kScale = 2;
+        const int native_width = screen == ScreenTarget::Top ? 400 : 320;
+        const int native_height = 240;
+        target.ensure(native_width * kScale, native_height * kScale);
+
+        RenderList list;
+        build_screen_list(source, screen, list);
+
+        if (!list.cameras().empty()) {
+            glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
+            render->set_viewport(target.width, target.height);
+            render->execute(list);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+
+        const float aspect = static_cast<float>(native_width) / static_cast<float>(native_height);
+        float width = available_width;
+        float height = width / aspect;
+        if (height > available_height) {
+            height = available_height;
+            width = height * aspect;
+        }
+        if (width < 1.0f || height < 1.0f) return;
+
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const float x = cursor.x + (available_width - width) * 0.5f;
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddRectFilled(ImVec2(x, cursor.y), ImVec2(x + width, cursor.y + height),
+                                 IM_COL32(12, 14, 20, 255));
+
+        ImGui::SetCursorScreenPos(ImVec2(x, cursor.y));
+        ImGui::Image(target.texture_id(), ImVec2(width, height), ImVec2(0, 1), ImVec2(1, 0));
+    }
+
+    void draw_game_view() {
+        if (!ImGui::Begin("Game")) {
+            ImGui::End();
+            return;
+        }
+
+        if (playing) {
+            if (ImGui::Button("Stop")) stop_play();
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.45f, 0.9f, 0.55f, 1.0f), "PLAYING");
+            ImGui::SameLine();
+            ImGui::TextDisabled("scripts running on the editor copy");
+        } else {
+            if (ImGui::Button("Play")) start_play();
+            ImGui::SameLine();
+            ImGui::TextDisabled("authored scene - press Play to run scripts");
+        }
+
+        ImGui::Separator();
+
+        const World& source = playing ? play_world : world;
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const float label_height = ImGui::GetTextLineHeightWithSpacing();
+        const float half =
+            std::max(40.0f, (avail.y - label_height * 2.0f - 12.0f) * 0.5f - 6.0f);
+
+        ImGui::Text("Top screen  400x240");
+        draw_preview(top_target, source, ScreenTarget::Top, avail.x, half);
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        ImGui::Text("Bottom screen  320x240");
+        draw_preview(bottom_target, source, ScreenTarget::Bottom, avail.x, half);
 
         ImGui::End();
     }
@@ -914,7 +1208,10 @@ struct Editor final {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
-                if (ImGui::MenuItem("Reset Layout")) layout_built = false;
+                if (ImGui::MenuItem("Reset Layout")) {
+                    layout_built = false;
+                    layout_from_ini = false;
+                }
                 if (ImGui::MenuItem("Reset Camera")) {
                     cameraPosition = Vec3{0.0f, 2.0f, 28.0f};
                     cameraYaw = -90.0f;
@@ -928,9 +1225,21 @@ struct Editor final {
                         cameraPosition = center - forward() * 10.0f;
                     }
                 }
+                ImGui::Separator();
+                ImGui::MenuItem("Camera Gizmos", nullptr, &show_camera_gizmos);
+                if (ImGui::MenuItem("Focus Scene View", "F7")) ImGui::SetWindowFocus("Scene");
+                if (ImGui::MenuItem("Focus Game View", "F6")) ImGui::SetWindowFocus("Game");
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Build")) {
+                if (ImGui::MenuItem(playing ? "Stop" : "Play (in editor)", "F5")) {
+                    if (playing) {
+                        stop_play();
+                    } else {
+                        start_play();
+                    }
+                }
+                ImGui::Separator();
                 const bool busy = g_play_state == 1 || g_play_state == 2;
                 if (ImGui::MenuItem("Playtest (build + Azahar)", nullptr, false, !busy)) {
                     start_playtest();
@@ -946,8 +1255,8 @@ struct Editor final {
                 case 4: state = "build failed"; break;
                 default: state = "idle"; break;
             }
-            ImGui::Text("  |  %s%s  |  Playtest: %s", base_name(projectDir).c_str(),
-                        dirty ? " *" : "", state);
+            ImGui::Text("  |  %s%s  |  Playtest: %s  |  %s", base_name(projectDir).c_str(),
+                        dirty ? " *" : "", state, playing ? "PLAYING" : "editing");
             ImGui::EndMainMenuBar();
         }
     }
@@ -970,6 +1279,7 @@ struct Editor final {
             ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.45f, nullptr, &left_top);
 
         ImGui::DockBuilderDockWindow("Scene", center);
+        ImGui::DockBuilderDockWindow("Game", center);
         ImGui::DockBuilderDockWindow("Hierarchy", left_top);
         ImGui::DockBuilderDockWindow("Assets", left_bottom);
         ImGui::DockBuilderDockWindow("Inspector", right);
@@ -979,22 +1289,47 @@ struct Editor final {
 
     void draw() {
         world.update_transforms();
+
+        if (playing) {
+            if (play_runtime) {
+                play_runtime->update(play_input, ImGui::GetIO().DeltaTime);
+            }
+            play_world.update_transforms();
+            play_input.pressed = 0;
+            play_input.released = 0;
+            play_input.held = 0;
+        }
+
         draw_menu();
 
         const ImGuiID dock = ImGui::DockSpaceOverViewport(
             0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
         if (!layout_built) {
-            build_layout(dock);
+            if (!layout_from_ini) build_layout(dock);
             layout_built = true;
         }
 
         draw_scene();
+        draw_game_view();
         draw_hierarchy();
         draw_inspector();
         draw_assets();
         draw_console();
 
         if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::GetIO().KeyCtrl) save_scene();
+        if (ImGui::IsKeyPressed(ImGuiKey_F5) && !ImGui::GetIO().WantTextInput) {
+            if (playing) {
+                stop_play();
+            } else {
+                start_play();
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F6) && !ImGui::GetIO().WantTextInput) {
+            ImGui::SetWindowFocus("Game");
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F7) && !ImGui::GetIO().WantTextInput) {
+            ImGui::SetWindowFocus("Scene");
+        }
     }
 };
 
@@ -1031,6 +1366,7 @@ int main() {
     register_project_components();
 
     Editor editor;
+    editor.layout_from_ini = fs::exists("imgui.ini");
     editor.render = create_render_device_gl();
     if (!editor.render->init()) {
         std::fprintf(stderr, "Lumika: failed to initialise the OpenGL renderer\n");

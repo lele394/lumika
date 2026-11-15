@@ -182,6 +182,11 @@ scene into a framebuffer texture that Dear ImGui displays, so the viewport is de
 aspect-correct without a second renderer. Textures currently fall back to white in the editor until
 `.t3x` decoding lands on the host.
 
+The editor's in-editor Play builds a serialized copy of the scene, runs the registered scripts on it
+through `Runtime`, and previews each on-screen camera by rebuilding a `RenderList` from the camera
+component (field of view, near/far planes, layer mask), mirroring `build_render_list` for one screen.
+Sprite rendering is not implemented in the desktop backend, so HUD text is absent from previews.
+
 ### Materials
 
 ```cpp
